@@ -1,6 +1,7 @@
 from utils import *
 from config import *
 import math
+import typing
 import os
 import sys
 import zipfile
@@ -58,7 +59,7 @@ class ComponenteBI:
         self.componente_pasta = os.path.join(COMPONENTES_PASTA, str(nugdg))
         self.toml_caminho = os.path.join(self.componente_pasta, "config.toml")
         self.html_caminho = os.path.join(self.componente_pasta, "html5.zip")
-        self.xml_caminho = os.path.join(self.componente_pasta, "self.componente.xml")
+        self.xml_caminho = os.path.join(self.componente_pasta, "componente.xml")
         self.html_pasta = os.path.join(self.componente_pasta, "html5")
         self.nugdg = nugdg
         componente = wrapper.soyquery(
@@ -128,7 +129,10 @@ class ComponenteBI:
     @classmethod
     def novo(
         cls,
-    ):
+    ) -> typing.Self:
+        """
+        Cria um componente de BI.
+        """
         html_padrao = os.path.join("html_padrao.zip")
         componente = wrapper.soysave(
             "Gadget",
@@ -153,7 +157,7 @@ class ComponenteBI:
         id = componente["NUGDG"]
         upload(id, html_padrao)
 
-        resultado = ComponenteBI(id)
+        resultado = cls(id)
         resultado.editar()
         return resultado
 
@@ -168,15 +172,15 @@ class ComponenteBI:
 
         with open(self.toml_caminho, "w") as toml_file:
             toml_str = f"""\
-    {toml_chaves["TITULO"]}= "{self.titulo}"
-    {"" if self.descricao else "# "}{toml_chaves["DESCRICAO"]}= "{self.descricao or "Descricao"}"
-    {"" if self.categoria else "# "}{toml_chaves["CATEGORIA"]}= "{self.categoria or "Contabilidade"}"
-    {toml_chaves["ATIVO"]}= "{self.ativo}"
-    {"" if self.layout else "# "}{toml_chaves["LAYOUT"]}= "{self.layout or "T"}"
-    {"" if self.assinado else "# "}{toml_chaves["GDGASSINADO"]}= "{self.assinado or "N"}"
-    # Caso o seja um cartão inteligente
-    {"" if self.cartao_inteligente_layout else "# "}{toml_chaves["EVOCARD"]}= "{self.cartao_inteligente_layout or "col1;row1"}"\
-    """
+{toml_chaves["TITULO"]}= "{self.titulo}"
+{"" if self.descricao else "# "}{toml_chaves["DESCRICAO"]}= "{self.descricao or "Descricao"}"
+{"" if self.categoria else "# "}{toml_chaves["CATEGORIA"]}= "{self.categoria or "Contabilidade"}"
+{toml_chaves["ATIVO"]}= "{self.ativo}"
+{"" if self.layout else "# "}{toml_chaves["LAYOUT"]}= "{self.layout or "T"}"
+{"" if self.assinado else "# "}{toml_chaves["GDGASSINADO"]}= "{self.assinado or "N"}"
+# Caso o seja um cartão inteligente
+{"" if self.cartao_inteligente_layout else "# "}{toml_chaves["EVOCARD"]}= "{self.cartao_inteligente_layout or "col1;row1"}"\
+"""
             toml_file.write(toml_str)
 
         with open(self.xml_caminho, "w") as xml_file:
@@ -217,17 +221,19 @@ if args.comando == "gravar":
     print("Componente gravado com sucesso.")
 
 elif args.comando == "novo":
-    componente.novo()
-    print(f"Componente {id} criado.")
-    print(f"Componente {nugdg} importado com sucesso.")
+    novo_componente = ComponenteBI.novo()
+    print(f"Componente {novo_componente.nugdg} criado.")
+    print(f"Componente {novo_componente.nugdg} importado com sucesso.")
 
 elif args.comando == "editar":
     componente.editar()
     print(f"Componente {nugdg} importado com sucesso.")
 
 elif args.comando == "remover":
-    ComponenteBI.remover(True, args.pks)
+    ComponenteBI.remover(True, *args.pks)
 
 elif args.comando == "lista":
-    lista = wrapper.soyquery(f"select * from tsigdg order by nugdg asc")
+    lista = wrapper.soyquery(
+        f"select nugdg, titulo, descricao, config from tsigdg order by nugdg asc"
+    )
     print(json.dumps(lista, indent=4))
