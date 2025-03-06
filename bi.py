@@ -2,6 +2,7 @@ from utils import *
 from config import *
 import math
 from datetime import datetime, timedelta
+import time
 import typing
 import os
 import sys
@@ -163,6 +164,8 @@ class ComponenteBI:
 
         resultado = cls(id)
         resultado.editar()
+        # folguinha pro sistema fraco
+        time.sleep(0.5)
         # pro {{BASE_DIR}} e outras variáveis serem substituídas,
         # esta linha é necessária
         resultado.gravar()
