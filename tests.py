@@ -1,5 +1,7 @@
 import unittest
 import random
+import tempfile
+import zipfile
 from utils import *
 from config import *
 from botao import *
@@ -8,6 +10,7 @@ from bi import *
 
 class TestBI(unittest.TestCase):
     def test_gravacao(self):
+        self.maxDiff = None
         componente = ComponenteBI.novo()
         xml_caminho = os.path.join(
             COMPONENTES_PASTA, str(componente.nugdg), "componente.xml"
@@ -34,6 +37,7 @@ assinado= "N"
         bruh = wrapper.soyquery(
             f"select * from tsigdg where nugdg = {componente.nugdg}"
         )[0]
+        componente.remover(False, componente.nugdg)
         bruh["NUGDG"] = 1
         bruh["DHALTER"] = ""
         self.assertEqual(
@@ -42,7 +46,7 @@ assinado= "N"
                 "NUGDG": 1,
                 "TITULO": "TESTE GRAVAÇÃO",
                 "DESCRICAO": "Teste",
-                "CONFIG": '<gadget>\n      <level id="02C" description="Principal">\n        <container orientacao="V" tamanhoRelativo="100">\n          <html5component id="html5_02D" entryPoint="index.html"></html5component>\n        </container>\n      </level>\n    </gadget>',
+                "CONFIG": "çç",
                 "THUMBNAIL": None,
                 "CATEGORIA": "Gravacao",
                 "ATIVO": "N",
@@ -57,7 +61,6 @@ assinado= "N"
                 "APVNC": None,
             },
         )
-        componente.remover(False, componente.nugdg)
 
     def test_adicao_e_remocao(self):
         componente = ComponenteBI.novo()
@@ -75,7 +78,6 @@ assinado= "N"
         )[0]["NUGDG"]
         componente = ComponenteBI(nugdg)
         componente.editar()
-        componente.remover(False, nugdg)
 
     def test_edicao_sem_html(self):
         nugdg = wrapper.soyquery(
@@ -83,7 +85,6 @@ assinado= "N"
         )[0]["NUGDG"]
         componente = ComponenteBI(nugdg)
         componente.editar()
-        componente.remover(False, nugdg)
 
 
 class TestBotao(unittest.TestCase):
@@ -326,6 +327,25 @@ class TestUtils(unittest.TestCase):
         )
         self.assertEqual(resultado, {"$": 777, "paramName": "DATA", "type": "D"})
 
-
-if __name__ == "__main__":
-    unittest.main()
+    def test_zipar_pasta(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.makedirs(os.path.join(tempdir, "pasta"), exist_ok=True)
+            with open(os.path.join(tempdir, "um.txt"), "w") as f1:
+                f1.write("SUBSTITUIR")
+            with open(os.path.join(tempdir, "pasta", "dois.txt"), "w") as f2:
+                f2.write("SUBSTITUIR")
+            zip_caminho = os.path.join(tempdir, "output.zip")
+            zipar_pasta(
+                tempdir,
+                zip_caminho,
+                {"SUBSTITUIR": "SUBSTITUÍDO"},
+            )
+            zip_pasta = os.path.join(tempdir, "output")
+            with zipfile.ZipFile(zip_caminho, "r") as zip_arquivo:
+                zip_arquivo.extractall(zip_pasta)
+            um = os.path.join(zip_pasta, "um.txt")
+            dois = os.path.join(zip_pasta, "pasta", "dois.txt")
+            with open(um, "r") as ff1:
+                self.assertEqual(ff1.read(), "SUBSTITUÍDO")
+            with open(dois, "r") as ff2:
+                self.assertEqual(ff2.read(), "SUBSTITUÍDO")

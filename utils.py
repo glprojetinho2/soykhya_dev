@@ -1,4 +1,6 @@
 import json
+import zipfile
+import os
 import requests
 from typing import Any
 from enum import Enum
@@ -418,3 +420,23 @@ class Soywrapper:
             },
         ).json()
         return r
+
+
+def zipar_pasta(pasta: str, output: str, substituicoes: dict[str, str]):
+    """
+    Compacta uma pasta fazendo substituições em todos os seus arquivos.
+    Exemplo:
+    ```python
+    zipar_pasta("caminho", "output.zip", {"termo": "substituição"})
+    ```
+    """
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as arquivo_zip:
+        for raiz, diretorios, caminhos in os.walk(pasta):
+            for caminho in caminhos:
+                caminho_maior = os.path.join(raiz, caminho)
+                with open(caminho_maior, "r") as f:
+                    conteudo = f.read()
+                for pesquisa, substituto in substituicoes.items():
+                    conteudo = conteudo.replace(pesquisa, substituto)
+                caminho_relativo = os.path.relpath(caminho_maior, pasta)
+                arquivo_zip.writestr(caminho_relativo, conteudo)

@@ -3,12 +3,56 @@ import xml.etree.ElementTree as ET
 from config import *
 
 
+class ProdutoXML:
+    def __init__():
+        pass
+
+
 class ImportacaoXML:
     def __init__(self, importacao_crua: dict[str, Any], wrapper: Soywrapper):
         self.cru = importacao_crua
         self.wrapper = wrapper
         assert self.cru["CONFIG"] is not None
         self.__config = ET.fromstring(self.cru["CONFIG"])
+        assert self.cru["XML"] is not None
+        self.__xml = ET.fromstring(self.cru["XML"])
+
+    def produtos(self):  # -> list[ProdutoXML]
+        resultado = []
+        for produto in self.__xml.iter("det"):
+            resultado.append(produto.attrib)
+        return resultado
+
+    @property
+    def config_produtos(self) -> list[dict[str, str]]:
+        """
+        Exemplo de retorno:
+        [
+            {
+                "ALGUMITEMDOXMLTEMLOTEMED": "false",
+                "CODPARC": "777 {Código do parceiro (cliente)}",
+                "NOMEPARC": "Nome do parceiro (cliente)",
+                "CODPRODXML": "777 {Código do produto no xml}",
+                "PRODUTOXML": "Nome do produto no xml",
+                "UNIDADEXML": "UN {Unidade do produto no xml}",
+                "QTDNEG": "8.0000 {Quantidade}",
+                "CODPROD": "1195 {Código do produto no Soynkhya}",
+                "DESCRPROD": "Nome do produto no Soynkhya",
+                "UNIDADE": "UN {Unidade do produto no Soynkhya}",
+                "UNIDADELOTE": "",
+                "CONTROLE": " ",
+                "CODBARRAPARC": "Código de barras do produto",
+                "ERRO": "N",
+                "FALTALOTE": "N",
+                "TIPCONTEST": ""
+            },
+            [...]
+        ]
+        """
+        resultado = []
+        for produto in self.__config.iter("produto"):
+            resultado.append(produto.attrib)
+        return resultado
 
     @property
     def divergencia_pedidos(self):
@@ -23,97 +67,105 @@ class ImportacaoXML:
         """
         Código do parceiro no Soynkhya.
         """
-        return self.__nota_e_xml("codParc", True)["nota"]
+        _resultado = self.__nota_e_xml("codParc", True)["nota"]
+        resultado = None
+        if _resultado is not None:
+            resultado = int(_resultado)
+        return resultado
 
     @property
     def empresa(self) -> int | None:
         """
         Código da empresa (CODEMP) no Soynkhya.
         """
-        return self.__nota_e_xml("codParc", True)["nota"]
+        _resultado = self.__nota_e_xml("codEmp", True)["nota"]
+        resultado = None
+        if _resultado is not None:
+            resultado = int(_resultado)
+        return resultado
 
     @property
-    def cgcEmp(self):
+    def config_cgc_empresa(self):
         return self.__nota_e_xml("cgcEmp")
 
     @property
-    def ieEmp(self):
+    def config_inscricao_estadual_empresa(self):
         return self.__nota_e_xml("ieEmp")
 
     @property
-    def nomeEmp(self):
+    def config_nome_empresa(self):
         return self.__nota_e_xml("nomeEmp")
 
     @property
-    def endEmp(self):
+    def config_endereco_empresa(self):
         return self.__nota_e_xml("endEmp")
 
     @property
-    def nroEmp(self):
+    def config_numero_empresa(self):
         return self.__nota_e_xml("nroEmp")
 
     @property
-    def bairroEmp(self):
+    def config_bairro_empresa(self):
         return self.__nota_e_xml("bairroEmp")
 
     @property
-    def cidadeEmp(self):
+    def config_cidade_empresa(self):
         return self.__nota_e_xml("cidadeEmp")
 
     @property
-    def ufEmp(self):
+    def config_uf_empresa(self):
         return self.__nota_e_xml("ufEmp")
 
     @property
-    def cepEmp(self):
+    def config_cep_empresa(self):
         return self.__nota_e_xml("cepEmp")
 
     @property
-    def paisEmp(self):
+    def config_pais_empresa(self):
         return self.__nota_e_xml("paisEmp")
 
     @property
-    def foneEmp(self):
+    def config_fone_empresa(self):
         return self.__nota_e_xml("foneEmp")
 
     @property
-    def ieParc(self):
+    def config_inscricao_estadual_parc(self):
         return self.__nota_e_xml("ieParc")
 
     @property
-    def nomeParc(self):
+    def config_nome_parceiro(self):
         return self.__nota_e_xml("nomeParc")
 
     @property
-    def endParc(self):
+    def config_endereco_parceiro(self):
         return self.__nota_e_xml("endParc")
 
     @property
-    def nroParc(self):
+    def config_numero_parceiro(self):
         return self.__nota_e_xml("nroParc")
 
     @property
-    def bairroParc(self):
+    def config_bairro_parceiro(self):
         return self.__nota_e_xml("bairroParc")
 
     @property
-    def cidadeParc(self):
+    def config_cidade_parceiro(self):
         return self.__nota_e_xml("cidadeParc")
 
     @property
-    def ufParc(self):
+    def config_uf_parceiro(self):
         return self.__nota_e_xml("ufParc")
 
     @property
-    def cepParc(self):
+    def config_cep_parceiro(self):
         return self.__nota_e_xml("cepParc")
 
     @property
-    def paisParc(self):
+    def config_pais_parceiro(self):
         return self.__nota_e_xml("paisParc")
 
     @property
-    def foneParc(self):
+    def config_fone_parceiro(self):
         return self.__nota_e_xml("foneParc")
 
     def __nota_e_xml(
@@ -158,12 +210,12 @@ class ImportacaoXML:
         return {"nota": nota, "xml": xml}
 
 
+config = wrapper.soyconfig("br.com.sankhya.cac.ImportacaoXMLNota.config")
 bruh = wrapper.soyquery(
-    "select * from tgfixn where numnota between 7777 and 10000 and config is not null"
-)
-for i in bruh:
-    assert not isinstance(i, str)
-    # print(i["CONFIG"])
-    importacao = ImportacaoXML(i, wrapper)
-    dado = importacao.endParc
-    print(dado)
+    "select * from tgfixn where xml is not null order by length(xml) desc fetch first 1 rows only"
+)[0]
+print(bruh["CONFIG"])
+import xml.dom.minidom
+
+print(xml.dom.minidom.parseString(bruh["XML"]).toprettyxml(indent=" "))
+# print(wrapper.processar(bruh["NUARQUIVO"], config, False))

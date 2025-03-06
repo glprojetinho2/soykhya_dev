@@ -1,29 +1,12 @@
-Faça botões de ação em javascript sem ter de interagir com o sistema hinduista Soynkhia (vulgo Sankhya).
-# Exemplos
-
-Cria um botão de ação:
-```python
-python main.py novo
+Trabalhe na linha de comando sem ter de interagir com o sistema hinduista Soynkhia (vulgo Sankhya).
+# Uso
+Assegura-te de que o `python` e o `pipenv` estão instalados.
+Executa os seguintes comandos:
+```bash
+pipenv shell
+python acao.py -h
+python bi.py -h
 ```
+Lê o manual atentamente (RTFM) e começa a mourejar.
 
-Edita o botão de ação com id 12:
-```python
-python main.py editar 12
-```
-
-Grava alterações feitas num botão:
-```python
-python main.py gravar 77
-```
-
-Testa um botão de ação.
-```python
-python main.py testar 77 parametro1 parametro2
-```
-
-Lista todos os botões de ação em javascript:
-```python
-python main.py lista
-```
-Podes usar o `grep` para achar algum botão específico.
 

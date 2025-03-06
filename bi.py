@@ -1,22 +1,14 @@
 from utils import *
 from config import *
 import math
+from datetime import datetime, timedelta
 import typing
 import os
 import sys
-import zipfile
 import requests
 import argparse
 import zipfile
 import os
-
-
-def zipar_pasta(pasta: str, output: str):
-    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        for raiz, diretorios, arquivos in os.walk(pasta):
-            for arquivo in arquivos:
-                caminho = os.path.join(raiz, arquivo)
-                zip_file.write(caminho, os.path.relpath(caminho, pasta))
 
 
 def upload(nugdg: int, caminho_do_zip: str):
@@ -63,7 +55,7 @@ class ComponenteBI:
         self.html_pasta = os.path.join(self.componente_pasta, "html5")
         self.nugdg = nugdg
         componente = wrapper.soyquery(
-            f"select length(html5) as tamanho, config, titulo, descricao, categoria, ativo, layout, gdgassinado, evocard from tsigdg where nugdg = {nugdg}"
+            f"select length(html5) as tamanho, config, titulo, dhalter, descricao, categoria, ativo, layout, gdgassinado, evocard from tsigdg where nugdg = {nugdg}"
         )[0]
         tamanho_pedaco = 1000
         self.configuracao = componente["CONFIG"]
@@ -91,8 +83,6 @@ class ComponenteBI:
         self.cartao_inteligente_layout: str | None = componente["EVOCARD"]
 
     def gravar(self):
-        zipar_pasta(self.html_pasta, self.html_caminho)
-        upload(self.nugdg, self.html_caminho)
         with open(self.xml_caminho, "r") as f_cfg:
             xml_cfg = f_cfg.read()
         with open(self.toml_caminho, "r") as t_cfg:
@@ -101,7 +91,21 @@ class ComponenteBI:
         mudanca.update(
             {chave: toml_cfg.get(toml_chaves[chave]) for chave in toml_chaves.keys()}
         )
-        wrapper.soysave("Gadget", [{"pk": {"NUGDG": self.nugdg}, "mudanca": mudanca}])
+        mudanca.update({"DHALTER": ""})
+        componente_atualizado = wrapper.soysave(
+            "Gadget", [{"pk": {"NUGDG": self.nugdg}, "mudanca": mudanca}]
+        )[0]
+        data_alteracao = datetime.strptime(
+            componente_atualizado["DHALTER"], "%d/%m/%Y %H:%M:%S"
+        )
+        data_formatada = data_alteracao.strftime("%Y%m%d%H%M%S")
+        diretorio_base = f"html5component/{self.nugdg}_{data_formatada}"
+        zipar_pasta(
+            self.html_pasta,
+            self.html_caminho,
+            {"{{BASE_DIR}}": diretorio_base, "{{DOMINIO}}": DOMINIO},
+        )
+        upload(self.nugdg, self.html_caminho)
 
     @classmethod
     def remover(cls, confirmar: bool, *pks):
@@ -159,6 +163,9 @@ class ComponenteBI:
 
         resultado = cls(id)
         resultado.editar()
+        # pro {{BASE_DIR}} e outras variáveis serem substituídas,
+        # esta linha é necessária
+        resultado.gravar()
         return resultado
 
     def editar(self):
@@ -187,53 +194,53 @@ class ComponenteBI:
             xml_file.write(self.configuracao)
 
 
-parser = argparse.ArgumentParser(
-    description="Faça componentes BI sem ter contato com o Soynkhya :)"
-)
-subparsers = parser.add_subparsers(dest="comando")
-
-editar_parser = subparsers.add_parser("editar", help="Edita componente.")
-editar_parser.add_argument("id", type=int, help="Id do componente.")
-
-lista_parser = subparsers.add_parser("lista", help="Lista componentes.")
-
-novo_parser = subparsers.add_parser("novo", help="Cria um novo componente.")
-
-gravar_parser = subparsers.add_parser(
-    "gravar", help="Grava alterações feitas no componente."
-)
-gravar_parser.add_argument("id", type=int, help="Id do componente.")
-
-remover_parser = subparsers.add_parser("remover", help="Remove um componente.")
-remover_parser.add_argument("pks", nargs="*", help="pks dos componentes")
-
-args = parser.parse_args()
-
-try:
-    nugdg = args.id
-    componente = ComponenteBI(nugdg)
-except AttributeError:
-    pass
-
-
-if args.comando == "gravar":
-    componente.gravar()
-    print("Componente gravado com sucesso.")
-
-elif args.comando == "novo":
-    novo_componente = ComponenteBI.novo()
-    print(f"Componente {novo_componente.nugdg} criado.")
-    print(f"Componente {novo_componente.nugdg} importado com sucesso.")
-
-elif args.comando == "editar":
-    componente.editar()
-    print(f"Componente {nugdg} importado com sucesso.")
-
-elif args.comando == "remover":
-    ComponenteBI.remover(True, *args.pks)
-
-elif args.comando == "lista":
-    lista = wrapper.soyquery(
-        f"select nugdg, titulo, descricao, config from tsigdg order by nugdg asc"
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Faça componentes BI sem ter contato com o Soynkhya :)"
     )
-    print(json.dumps(lista, indent=4))
+    subparsers = parser.add_subparsers(dest="comando")
+
+    editar_parser = subparsers.add_parser("editar", help="Edita componente.")
+    editar_parser.add_argument("id", type=int, help="Id do componente.")
+
+    lista_parser = subparsers.add_parser("lista", help="Lista componentes.")
+
+    novo_parser = subparsers.add_parser("novo", help="Cria um novo componente.")
+
+    gravar_parser = subparsers.add_parser(
+        "gravar", help="Grava alterações feitas no componente."
+    )
+    gravar_parser.add_argument("id", type=int, help="Id do componente.")
+
+    remover_parser = subparsers.add_parser("remover", help="Remove um componente.")
+    remover_parser.add_argument("pks", nargs="*", help="pks dos componentes")
+
+    args = parser.parse_args()
+
+    try:
+        nugdg = args.id
+        componente = ComponenteBI(nugdg)
+    except AttributeError:
+        pass
+
+    if args.comando == "gravar":
+        componente.gravar()
+        print("Componente gravado com sucesso.")
+
+    elif args.comando == "novo":
+        novo_componente = ComponenteBI.novo()
+        print(f"Componente {novo_componente.nugdg} criado.")
+        print(f"Componente {novo_componente.nugdg} importado com sucesso.")
+
+    elif args.comando == "editar":
+        componente.editar()
+        print(f"Componente {nugdg} importado com sucesso.")
+
+    elif args.comando == "remover":
+        ComponenteBI.remover(True, *args.pks)
+
+    elif args.comando == "lista":
+        lista = wrapper.soyquery(
+            f"select nugdg, titulo, descricao, config from tsigdg order by nugdg asc"
+        )
+        print(json.dumps(lista, indent=4))
