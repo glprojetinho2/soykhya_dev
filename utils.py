@@ -117,7 +117,7 @@ class Soywrapper:
         except json.JSONDecodeError:
             raise self.erro(r.text)
 
-    def soysave(self, entidade: str, mudancas: list[dict[str, dict[str, str]]]):
+    def soysave(self, entidade: str, mudancas: list[dict[str, dict[str, str | int]]]):
         """
         Wrapper pro DataSP.save.
         `mudancas` tem o seguinte formato: [{

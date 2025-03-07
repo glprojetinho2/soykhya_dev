@@ -83,12 +83,16 @@ class ComponenteBI:
         self.assinado: str | None = componente["GDGASSINADO"]
         self.cartao_inteligente_layout: str | None = componente["EVOCARD"]
 
-    def gravar(self):
+    def gravar(self) -> str:
+        """
+        Grava o componente e retorna o seu diretório no servidor
+        da Soynkhya.
+        """
         with open(self.xml_caminho, "r") as f_cfg:
             xml_cfg = f_cfg.read()
         with open(self.toml_caminho, "r") as t_cfg:
             toml_cfg = toml.loads(t_cfg.read())
-        mudanca = {"CONFIG": xml_cfg}
+        mudanca: dict[str, str | int] = {"CONFIG": xml_cfg}
         mudanca.update(
             {chave: toml_cfg.get(toml_chaves[chave]) for chave in toml_chaves.keys()}
         )
@@ -107,6 +111,7 @@ class ComponenteBI:
             {"{{BASE_DIR}}": diretorio_base, "{{DOMINIO}}": DOMINIO},
         )
         upload(self.nugdg, self.html_caminho)
+        return diretorio_base
 
     @classmethod
     def remover(cls, confirmar: bool, *pks):
@@ -165,7 +170,7 @@ class ComponenteBI:
         resultado = cls(id)
         resultado.editar()
         # folguinha pro sistema fraco
-        time.sleep(0.5)
+        time.sleep(1)
         # pro {{BASE_DIR}} e outras variáveis serem substituídas,
         # esta linha é necessária
         resultado.gravar()
