@@ -70,6 +70,8 @@ for i in range(int(nota["QTDVOL"])):
     c.drawString(largura * 0.1, altura * 0.55, f"Cidade: {cidade}")
     c.drawString(largura * 0.1, altura * 0.40, f"Transp: {transportadora}")
     c.drawString(largura * 0.1, altura * 0.25, f"Volumes: {volumes}")
+    c.setFont("Helvetica", 12)
+    c.drawString(largura * 0.8, altura * 0.15, f"{i+1}/{nota["QTDVOL"]}")
     c.showPage()
 c.save()
 subprocess.run(["lp", "-d", "elgin", "etiqueta.pdf"])
