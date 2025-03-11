@@ -172,3 +172,5 @@ cython_debug/
 .pypirc
 scripts
 componentes
+etiqueta.pdf
+config.toml

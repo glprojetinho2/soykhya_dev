@@ -7,6 +7,7 @@ name = "pypi"
 browsercookie = "*"
 requests = "*"
 toml = "*"
+reportlab = "*"
 
 [dev-packages]
 types-toml = "*"
