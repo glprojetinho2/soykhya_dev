@@ -18,7 +18,9 @@ class ErroDoSoynkhya(Exception):
         super().__init__(self.message)
 
 
-def chaves_das_mudancas(mudancas_com_pk: list[dict[str, dict[str, str]]]) -> list[str]:
+def chaves_das_mudancas(
+    mudancas: list[dict[str, dict[str, str | float | int | None]]],
+) -> list[str]:
     """
     self.assertEqual(
         chaves_das_mudancas(
@@ -38,7 +40,7 @@ def chaves_das_mudancas(mudancas_com_pk: list[dict[str, dict[str, str]]]) -> lis
         ["DESCRICAO", "RESOURCEID"],
     )
     """
-    mudancas = [x["mudanca"] for x in mudancas_com_pk]
+    mudancas = [x["mudanca"] for x in mudancas]
     keys = flatten([list(mudanca.keys()) for mudanca in mudancas])
     return keys
 
@@ -53,12 +55,16 @@ def flatten(lst: list[Any]):
     return flat_list
 
 
+def lista(item):
+    return item if isinstance(item, list) else [item]
+
+
 def mudancas_para_records(
-    mudancas_com_pk: list[dict[str, dict[str, str]]],
-) -> list[dict[str, dict[str, str]]]:
-    fields = chaves_das_mudancas(mudancas_com_pk)
+    mudancas: list[dict[str, dict[str, str | float | int | None]]],
+) -> list[dict[str, dict[str, str | float | int | None]]]:
+    fields = chaves_das_mudancas(mudancas)
     records = []
-    for mudanca in mudancas_com_pk:
+    for mudanca in mudancas:
         mudanca_item = mudanca.pop("mudanca")
         elemento_corpo = mudanca
         elemento_corpo["values"] = {}
@@ -79,23 +85,45 @@ class Impostos_Financeiro(Enum):
     NAO_INFORMADO = "N"
 
 
+class TipoImpressao(Enum):
+    NOTA = 1
+    BOLETO = 3
+
+
 class Soywrapper:
     """
     Classe contendo wrappers para requests que o Soynkhya faz.
     """
 
-    def __init__(self, url, jsessionid_mge, jsessionid_mgefin, jsessionid_mgecom):
+    def __init__(self, url, jsessionid_mge, jsessionid_mgecom, jsessionid_mgefin):
         self.mge = {"JSESSIONID": jsessionid_mge}
         self.mgefin = {"JSESSIONID": jsessionid_mgefin}
         self.mgecom = {"JSESSIONID": jsessionid_mgecom}
         self.url = url
 
-    def erro(self, mensagem: str):
+    def erro(self, mensagem: str | dict[Any, Any]):
         print(f"mge: {self.mge["JSESSIONID"][:5]}...")
         print(f"mgecom: {self.mgecom["JSESSIONID"][:5]}...")
         print(f"mgefin: {self.mgefin["JSESSIONID"][:5]}...")
         print(f"url: {self.url}")
-        raise ErroDoSoynkhya(mensagem)
+        raise ErroDoSoynkhya(json.dumps(mensagem, indent=4, ensure_ascii=False))
+
+    def pegar_corpo(self, r: requests.Response) -> dict[str, Any]:
+        """
+        Retorna o "responseBody" de uma resposta. Se houver algum erro na resposta,
+        ele bloquerá o processo.
+        """
+        try:
+            resposta = r.json()
+        except json.JSONDecodeError:
+            raise self.erro(r.text)
+        if "statusMessage" in resposta:
+            raise self.erro(resposta["statusMessage"])
+        try:
+            resposta = resposta["responseBody"]
+        except KeyError:
+            self.erro(resposta)
+        return resposta
 
     def soyremove(self, entidade: str, pks: list[dict[str, str]]):
         """
@@ -112,12 +140,13 @@ class Soywrapper:
                 "pks": pks,
             },
         )
-        try:
-            return r.json()
-        except json.JSONDecodeError:
-            raise self.erro(r.text)
+        return self.pegar_corpo(r)
 
-    def soysave(self, entidade: str, mudancas: list[dict[str, dict[str, str | int]]]):
+    def soysave(
+        self,
+        entidade: str,
+        mudancas: list[dict[str, dict[str, str | float | int | None]]],
+    ) -> list[dict[str, str | float | int | None]]:
         """
         Wrapper pro DataSP.save.
         `mudancas` tem o seguinte formato: [{
@@ -153,17 +182,8 @@ class Soywrapper:
         #   "transactionId":"BRUH"
         #   "responseBody":{"total":"2", "result":[["CAMPO1", "CAMPO2"], ["CAMPO1", "CAMPO2"]]}
         # }
-        try:
-            response = r.json()
-        except json.JSONDecodeError:
-            raise self.erro(r.text)
-        assert response.get(
-            "responseBody"
-        ), f"Resposta sem corpo: {json.dumps(response, indent=4)}"
-        assert response["responseBody"].get(
-            "result"
-        ), f"Corpo sem 'result': {json.dumps(response, indent=4)}"
-        lista_valores = response["responseBody"]["result"]
+        response = self.pegar_corpo(r)
+        lista_valores = response["result"]
         resultados = []
         for valores in lista_valores:
             resultados.append(dict(zip(fields, valores)))
@@ -204,11 +224,17 @@ class Soywrapper:
         try:
             response = r.json()
         except json.JSONDecodeError:
-            print("Query: ", query)
-            raise self.erro(r.text)
+            raise self.erro(
+                f"""\
+Query: {query}
+{r.text}"""
+            )
         if "responseBody" not in response:
-            print("Query: ", query)
-            raise self.erro(json.dumps(response, indent=4))
+            raise self.erro(
+                f"""\
+Query: {query}
+{r.text}"""
+            )
         response_body = response["responseBody"]
         fields_metadata = response_body["fieldsMetadata"]
         # aqui estão os resultados de fato
@@ -237,7 +263,7 @@ class Soywrapper:
         assert cookie in ("mge", "mgefin", "mgecom")
         if cookie == "mge":
             r = requests.post(
-                self.url,
+                self.url + f"/mge/service.sbr",
                 params=params,
                 cookies=self.mge,
                 headers=HEADERS,
@@ -245,7 +271,7 @@ class Soywrapper:
             )
         elif cookie == "mgefin":
             r = requests.post(
-                self.url,
+                self.url + f"/mgefin/service.sbr",
                 params=params,
                 cookies=self.mgefin,
                 headers=HEADERS,
@@ -253,7 +279,7 @@ class Soywrapper:
             )
         elif cookie == "mgecom":
             r = requests.post(
-                self.url,
+                self.url + f"/mgecom/service.sbr",
                 params=params,
                 cookies=self.mgecom,
                 headers=HEADERS,
@@ -288,8 +314,43 @@ class Soywrapper:
                 }
             },
         ).json()
-        assert "responseBody" in r, json.dumps(r, indent=4)
+        assert "responseBody" in r, json.dumps(r, indent=4, ensure_ascii=False)
         return r["responseBody"]["config"]
+
+    def upload(self, chave: str, caminho: str, tipo="application/zip"):
+        with open(caminho, "rb") as __upload_f:
+            files = {"arquivo": ("arquivo", __upload_f, tipo)}
+            requests.get(
+                f"{self.url}/mge/sessionUpload.mge",
+                cookies=self.mge,
+                params={
+                    "sessionkey": chave,
+                    "fitem": "S",
+                    "isHtml5": "S",
+                },
+            )
+            requests.post(
+                f"{self.url}/mge/sessionUpload.mge",
+                cookies=self.mge,
+                params={"salvar": "S"},
+                files=files,
+            )
+
+    def importar_arquivo(
+        self,
+        configuracao: dict[str, dict[str, str]],
+    ):
+        corpo = {
+            "chave": {
+                "fileKey": "IMPORTACAO_XML_ZIPXML",
+                "multiplosAvisos": "true",
+                "paramsNFeEmissaoPropria": configuracao,
+                "paramsNFe": configuracao,
+                "paramsCte": configuracao,
+            }
+        }
+        r = self.soyrequest("ImportacaoXMLNotasSP.importarArquivo", corpo).json()
+        return r
 
     def processar(
         self,
@@ -327,6 +388,327 @@ class Soywrapper:
         }
         r = self.soyrequest("ImportacaoXMLNotasSP.processarArquivo", corpo).json()
         return r
+
+    def editar_liberacao(self, mudancas: list[dict[str, str]]):
+        """
+        Exemplo de mudanças:
+        [
+            {
+                "chave": 154746,
+                "tabela": "TGFCAB",
+                "evento": 3,
+                "sequencia": 0,
+                "solicitante": 57,
+                "liberador": 18,
+                "seqCascata": 0,
+                "enviaNotif": "S",
+                "hashLiberacao": "beb835ba59f263fbd68de5fcf6f331d5",
+                "nucll": "",
+            }
+        ]
+        """
+        return self.soyrequest(
+            "LiberacaoAlcadaSP.editarLiberacoes",
+            {"liberacoes": {"liberacao": mudancas}},
+        ).json()
+
+    def faturar_documento(
+        self,
+        notas: list[int],
+        codigo_tipo_operacao: int,
+        ignorar_estoque_insuficiente=True,
+        parametros_low_level={},
+    ) -> dict[str, Any]:
+        """
+        Fatura documento para o código destino especificado (`codigo_tipo_operacao`).
+        Exemplo de resposta:
+        ```json
+        {
+            "usuario": "22",
+            "movimento": "P",
+            "valor_nota_faturada": "0",
+            "numero_nota_faturada": "0",
+            "nota": "153773"
+        }
+        ```
+        """
+        # {
+        #     "serviceName": "SelecaoDocumentoSP.faturar",
+        #     "status": "1",
+        #     "pendingPrinting": "false",
+        #     "transactionId": "7043379C69B14CEF87F31B35D4E0BCC8",
+        #     "responseBody": {
+        #         "codUsuLogado": {
+        #             "$": "57"
+        #         },
+        #         "notas": {
+        #             "tipMov": "V",
+        #             "vlrNotaFat": "1862.49",
+        #             "numNotaFat": "0",
+        #             "nota": {
+        #                 "$": "153541"
+        #             }
+        #         }
+        #     }
+        # }
+        notas_soynkhya = [{"$": nota} for nota in notas]
+        corpo = {
+            "codTipOper": codigo_tipo_operacao,
+            "dtFaturamento": "",
+            "serie": "4",
+            "dtSaida": "",
+            "hrSaida": "",
+            "tipoFaturamento": "FaturamentoNormal",
+            "dataValidada": True,
+            "notasComMoeda": {},
+            "nota": notas_soynkhya,
+            "codEmp": 2,
+            "codLocalDestino": "",
+            "conta2": 0,
+            "faturarTodosItens": True,
+            "umaNotaParaCada": "false",
+            "ehWizardFaturamento": True,
+            "dtFixaVenc": "",
+            "ehPedidoWeb": False,
+            "nfeDevolucaoViaRecusa": False,
+            "isFaturamentoDanfeSeguranca": False,
+        }
+        if ignorar_estoque_insuficiente:
+            produtos = [
+                produto["CODPROD"]
+                for produto in self.soyquery(
+                    f"select codprod from tgfite where nunota in ({",".join([str(nota) for nota in notas])})"
+                )
+            ]
+            corpo.update(
+                {
+                    "txProperties": {
+                        "prop": [
+                            {
+                                "name": f"central.notas.pode.efetivar_{codigo}",
+                                "value": "true",
+                            }
+                            for codigo in produtos
+                        ]
+                    },
+                }
+            )
+
+        corpo.update(parametros_low_level)
+        r = self.soyrequest(
+            "SelecaoDocumentoSP.faturar",
+            {
+                "notas": corpo,
+            },
+            cookie="mgecom",
+        )
+        try:
+            resposta = self.pegar_corpo(r)
+            return {
+                "nota": resposta["notas"]["nota"]["$"],
+                "usuario": resposta["codUsuLogado"]["$"],
+                "movimento": resposta["notas"]["tipMov"],
+                "valor_nota_faturada": resposta["notas"]["vlrNotaFat"],
+                "numero_nota_faturada": resposta["notas"]["numNotaFat"],
+            }
+        except json.JSONDecodeError:
+            raise self.erro(r.text)
+
+    def estrutura_de_entidade(self, entidade: str):
+        r = self.soyrequest(
+            "PersonalizedFilter.getEntityStructure", {"entity": {"name": entidade}}
+        )
+        return self.pegar_corpo(r)
+
+    def imprimir_notas(
+        self,
+        notas: list[int],
+        tipo=TipoImpressao.NOTA,
+        pedido_web=False,
+        portal_caixa=False,
+        gerar_pdf=False,
+    ) -> dict[str, Any]:
+        nota_requisicao = [
+            {"nuNota": nunota, "tipoImp": tipo.value, "impressaoDanfeSimplicado": False}
+            for nunota in notas
+        ]
+        corpo = {
+            "notas": {
+                "pedidoWeb": pedido_web,
+                "portalCaixa": portal_caixa,
+                "gerarpdf": gerar_pdf,
+                "nota": nota_requisicao,
+            },
+        }
+        resposta = self.soyrequest("ImpressaoNotasSP.imprimeDocumentos", corpo).json()
+        if not gerar_pdf:
+            transacao = resposta["transactionId"]
+            url = f"https://localhost:9196/.localPrinting?params={self.mgecom["JSESSIONID"]}|{transacao}"
+            headers = {
+                "Origin": self.url,
+                "Referer": f"{self.url}/mgecom/SelecaoDocumento.xhtml5",
+                "Accept": "*/*",
+            }
+            requests.get(url, headers=headers, verify=False)
+        return transacao
+
+    def gerar_lote(self, notas: list[int]):
+        notas_soynkhya = [{"$": nota} for nota in notas]
+        r = self.soyrequest(
+            "ServicosNfeSP.gerarLote",
+            {
+                "notas": {
+                    "retNotasReprovadas": True,
+                    "nunota": notas_soynkhya,
+                    "habilitaClientEvent": "S",
+                    "visAutOcorrencias": True,
+                    "habilitaClientEvent": "S",
+                    "visAutOcorrencias": True,
+                    "txProperties": {
+                        "prop": [
+                            {"name": "br.com.utiliza.dtneg.servidor", "value": True}
+                        ]
+                    },
+                    "confirmaGeracaoXmlRejeitado": "S",
+                }
+            },
+            cookie="mgecom",
+        )
+        return self.pegar_corpo(r)
+
+    def confirmar_documento(
+        self, notas: list[int], parametros_low_level={}
+    ) -> dict[str, Any]:
+        """
+        Exemplo de resposta:
+        {
+        }
+        """
+        # Exemplo de resposta:
+        # {
+        #     "serviceName": "ServicosNfeSP.confirmarNotas",
+        #     "status": "1",
+        #     "pendingPrinting": "false",
+        #     "transactionId": "9D4C0E19E447612CF472BF400706EDE8",
+        #     "responseBody": {
+        #         "resumoConfirmacao": {
+        #             "docsConfirmados": "1",
+        #             "docsNaoConfirmados": "0",
+        #             "totalDocs": "1",
+        #             "confirmados": {
+        #                 "nota": {
+        #                     "$": "Documento n\u00ba 153804 foi confirmado com sucesso.\n--------------------------------------------------------------------------------------------------------\n\n",
+        #                     "nuNota": "153804"
+        #                 }
+        #             }
+        #         }
+        #     }
+        # }
+        # o "nota" pode ser uma lista (??????????????????????)
+        notas_soynkhya = [{"$": nota} for nota in notas]
+        corpo = {
+            "confirmacaoPortal": True,
+            "aprovarNFeNFSe": False,
+            "compensarNotaAutomaticamente": False,
+            "confirmacaoCentralNota": True,
+            "pedidoWeb": False,
+            "resourceID": "br.com.sankhya.mgecom.mov.selecaodedocumento",
+            "atualizaPrecoItemPedCompra": False,
+            "ownerServiceCall": "SelecaoDocumento",
+            "nunota": notas_soynkhya,
+            "txProperties": {
+                "prop": [
+                    {
+                        "name": "br.com.utiliza.dtneg.servidor",
+                        "value": False,
+                    },
+                    {
+                        "name": "central.notas.pode.compensar",
+                        "value": False,
+                    },
+                ]
+            },
+        }
+        corpo.update(parametros_low_level)
+        r = self.soyrequest(
+            "ServicosNfeSP.confirmarNotas",
+            {
+                "notas": corpo,
+            },
+            cookie="mgecom",
+        )
+        try:
+            resposta = self.pegar_corpo(r)
+            try:
+                resposta = resposta["resumoConfirmacao"]
+                liberacoes = []
+                if "eventosLiberacao" in resposta:
+                    liberacoes = self.soyquery(
+                        f"select * from vsilib where nuchave in ({", ".join([str(nota) for nota in notas])})"
+                    )
+                mensagens = []
+                if "confirmados" in resposta:
+                    for elemento in lista(resposta["confirmados"]["nota"]):
+                        mensagens.append(
+                            {"documento": elemento["nuNota"], "mensagem": elemento["$"]}
+                        )
+
+                if "naoConfirmados" in resposta:
+                    for elemento in lista(resposta["naoConfirmados"]["nota"]):
+                        mensagens.append(
+                            {"documento": elemento["nuNota"], "mensagem": elemento["$"]}
+                        )
+
+                return {
+                    "confirmados": resposta["docsConfirmados"],
+                    "nao_confirmados": resposta["docsNaoConfirmados"],
+                    "total": resposta["totalDocs"],
+                    "mensagens": mensagens,
+                    "liberacoes": liberacoes,
+                }
+            except KeyError:
+                self.erro(resposta)
+        except json.JSONDecodeError:
+            raise self.erro(r.text)
+        raise self.erro(r.text)
+
+    def cancelar_nota(
+        self, notas: list[int], justificativa: str, pode_cancelar_remessa=True
+    ):
+        notas_soynkhya = [{"$": nota} for nota in notas]
+        r = self.soyrequest(
+            "CACSP.cancelarNota",
+            {
+                "notasCanceladas": {
+                    "nunota": notas_soynkhya,
+                    "nota": notas_soynkhya,
+                    "justificativa": justificativa,
+                    "txProperties": {
+                        "prop": [
+                            {
+                                "name": "pode.cancelar.notas.remessa",
+                                "value": pode_cancelar_remessa,
+                            }
+                        ]
+                    },
+                },
+            },
+            cookie="mgecom",
+        )
+        return self.pegar_corpo(r)
+
+    def carta_de_correcao(self, nota: int, texto: str):
+        r = self.soyrequest(
+            "ServicosNfeSP.enviarCartaCorrecao",
+            {
+                "carta": {
+                    "nota": {"$": nota},
+                    "texto": {"$": texto},
+                }
+            },
+        ).json()
+        assert "responseBody" in r, self.erro(r)
+        assert r["responseBody"] == {}, self.erro(r)
 
     def validar_importacao(
         self,

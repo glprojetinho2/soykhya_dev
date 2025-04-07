@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 from typing import Dict, Any, List
 import json
 import toml
+import tempfile
 import sys
 import os
 import re
@@ -73,7 +74,17 @@ tabela_parser.add_argument(
 remover_parser = subparsers.add_parser("remover", help="Remove um botões de ação.")
 remover_parser.add_argument("pks", nargs="*", help="pks dos botões")
 
+estrutura_parser = subparsers.add_parser(
+    "estrutura", help="Dá-te acesso à estrutura de uma entidade."
+)
+estrutura_parser.add_argument("entidade", help="Nome da entidade.")
+
 args = parser.parse_args()
+
+
+def estrutura(entidade: str):
+    r = wrapper.estrutura_de_entidade(entidade)
+    print(json.dumps(r, indent=2, ensure_ascii=False))
 
 
 def editar(id: int):
@@ -118,8 +129,8 @@ def gravar(id: int):
     ), f"""\
 Não foi possível atualizar o botão.
 Diferença: {set(checagem_query.items()) ^ set(novo_botao_cru.items())}
-Banco: {json.dumps(checagem_query, indent=4)}
-Local: {json.dumps(novo_botao_cru, indent=4)}\
+Banco: {json.dumps(checagem_query, indent=4, ensure_ascii=False)}
+Local: {json.dumps(novo_botao_cru, indent=4, ensure_ascii=False)}\
 """
 
 
@@ -162,6 +173,7 @@ elif args.comando == "gravar":
     id = args.id
     try:
         gravar(id)
+        print("Botão gravado com sucesso.")
     except FileNotFoundError:
         print("Estás tentando gravar um botão de ação que não foi importado.")
         sys.exit(1)
@@ -245,15 +257,10 @@ elif args.comando == "lista":
     botao_cru = wrapper.soyquery(
         f"select * from tsibta where tipo = 'SC' order by idbtnacao asc"
     )
-    print(json.dumps(botao_cru, indent=4))
+    print(json.dumps(botao_cru, indent=4, ensure_ascii=False))
 
 elif args.comando == "query":
-    print(
-        json.dumps(
-            wrapper.soyquery(args.query),
-            indent=4,
-        )
-    )
+    print(json.dumps(wrapper.soyquery(args.query), indent=4, ensure_ascii=False))
 
 elif args.comando == "instancia":
     instancias = wrapper.soyquery(
@@ -271,6 +278,9 @@ elif args.comando == "tabela":
     for instancia in instancias:
         print(instancia["NOMETAB"], instancia["NOMEINSTANCIA"])
 
+elif args.comando == "estrutura":
+    estrutura(args.entidade)
+
 elif args.comando == "remover":
     for pk in args.pks:
         _resultado = wrapper.soyquery(
@@ -280,7 +290,7 @@ elif args.comando == "remover":
             print(f"Não há botão com a pk igual a {pk}")
             sys.exit(1)
         resultado = _resultado[0]
-        print(json.dumps(resultado, indent=4))
+        print(json.dumps(resultado, indent=4, ensure_ascii=False))
         resposta = input("Desejas remover o registro acima? [s/N]: ")
         if resposta == "s":
             wrapper.soyremove("BotaoAcao", [{"IDBTNACAO": pk}])

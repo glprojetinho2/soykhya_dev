@@ -13,27 +13,13 @@ import os
 
 
 def upload(nugdg: int, caminho_do_zip: str):
-    with open(caminho_do_zip, "rb") as __upload_f:
-        files = {"arquivo": ("html.zip", __upload_f, "application/zip")}
-        requests.get(
-            f"https://{DOMINIO}/mge/sessionUpload.mge",
-            cookies={"JSESSIONID": sankhya_cookies["mge"]},
-            params={
-                "sessionkey": "ARQUIVO_COMPONENTE",
-                "fitem": "S",
-                "isHtml5": "S",
-            },
-        )
-        requests.post(
-            f"https://{DOMINIO}/mge/sessionUpload.mge",
-            cookies={"JSESSIONID": sankhya_cookies["mge"]},
-            params={"salvar": "S"},
-            files=files,
-        )
+    wrapper.upload("ARQUIVO_COMPONENTE", caminho_do_zip)
+    wrapper.pegar_corpo(
         wrapper.soyrequest(
             "DynaGadgetBuilderSP.atualizarComponente",
             {"param": {"chave": "ARQUIVO_COMPONENTE", "nugdg": nugdg}},
         )
+    )
 
 
 toml_chaves = {

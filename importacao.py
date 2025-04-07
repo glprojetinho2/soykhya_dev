@@ -1,16 +1,29 @@
 from utils import *
+import typing
+import xml.dom.minidom
 import xml.etree.ElementTree as ET
+import argparse
 from config import *
+from enum import Enum
+
+
+class StatusImportacao(Enum):
+    PENDENTE = 0
+    IMPORTADO = 2
+    COM_DIVERGENCIA = 4
+    CONFIRMADO = 5
 
 
 class ProdutoXML:
-    def __init__():
+    def __init__(self):
         pass
 
 
 class ImportacaoXML:
+
     def __init__(self, importacao_crua: dict[str, Any], wrapper: Soywrapper):
         self.cru = importacao_crua
+        self.nuarquivo = self.cru["NUARQUIVO"]
         self.wrapper = wrapper
         assert self.cru["CONFIG"] is not None
         self.__config = ET.fromstring(self.cru["CONFIG"])
@@ -43,6 +56,13 @@ class ImportacaoXML:
                 "CONTROLE": " ",
                 "CODBARRAPARC": "Código de barras do produto",
                 "ERRO": "N",
+            nova_importacao_crua = wrapper.soyquery(
+                f"select * from tgfixn where nuarquivo={r["nuarquivo"]["$"]}"
+            )
+            assert (
+                len(nova_importacao_crua) > 0
+            ), "Importação foi criada, mas não está no banco de dados (????)"
+            return cls(nova_importacao_crua[0], wrapper)
                 "FALTALOTE": "N",
                 "TIPCONTEST": ""
             },
@@ -61,6 +81,15 @@ class ImportacaoXML:
     @property
     def divergencia_itens(self):
         return bool(self.__config.find("cabecalho").attrib.get("DIVERGENCIAITENS"))
+
+    @property
+    def erro(self) -> str | None:
+        if "validacoes" == self.__config.tag:
+            return " ".join(
+                [elem.text for elem in self.__config.iter() if elem.text is not None]
+            ).strip()
+        else:
+            return None
 
     @property
     def parceiro(self) -> int | None:
@@ -168,6 +197,14 @@ class ImportacaoXML:
     def config_fone_parceiro(self):
         return self.__nota_e_xml("foneParc")
 
+    def processar(self):
+        config = wrapper.soyconfig("br.com.sankhya.cac.ImportacaoXMLNota.config")
+        print(wrapper.processar(self.nuarquivo, config, False))
+        nova_importacao_crua = wrapper.soyquery(
+            f"select * from tgfixn where nuarquivo={self.nuarquivo}"
+        )
+        return ImportacaoXML(nova_importacao_crua[0], self.wrapper)
+
     def __nota_e_xml(
         self, nome_da_tag: str, valores_numericos=False
     ) -> dict[str, str | int | None]:
@@ -209,13 +246,53 @@ class ImportacaoXML:
                     xml = int(_xml.text)
         return {"nota": nota, "xml": xml}
 
+    @classmethod
+    def novo(cls, caminho: str) -> typing.Self:
+        config = wrapper.soyconfig("br.com.sankhya.cac.ImportacaoXMLNota.config")
+        wrapper.upload("IMPORTACAO_XML_ZIPXML", caminho, "text/xml")
+        resposta_importacao = wrapper.importar_arquivo(config)
+        assert "responseBody" in resposta_importacao, json.dumps(
+            resposta_importacao, indent=4
+        )
+        r = resposta_importacao["responseBody"]
+        if "nuarquivo" in r:
+            nova_importacao_crua = wrapper.soyquery(
+                f"select * from tgfixn where nuarquivo={r["nuarquivo"]["$"]}"
+            )
+            assert (
+                len(nova_importacao_crua) > 0
+            ), "Importação foi criada, mas não está no banco de dados (????)"
+            return cls(nova_importacao_crua[0], wrapper)
+        assert (
+            "statusMessage" not in resposta_importacao
+        ), f"Mensagem de erro (status: {resposta_importacao["status"]}): {resposta_importacao["statusMessage"]}"
 
-config = wrapper.soyconfig("br.com.sankhya.cac.ImportacaoXMLNota.config")
-bruh = wrapper.soyquery(
-    "select * from tgfixn where xml is not null order by length(xml) desc fetch first 1 rows only"
-)[0]
-print(bruh["CONFIG"])
-import xml.dom.minidom
+        assert "aviso" not in r, r["aviso"]["$"]
+        raise Exception(json.dumps(resposta_importacao, indent=4))
 
-print(xml.dom.minidom.parseString(bruh["XML"]).toprettyxml(indent=" "))
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Seja um faturista sem tocar no Soynkhya :)"
+    )
+    parser.add_argument("argumento")
+    args = parser.parse_args()
+
+    wrapper.imprimir_notas(
+        [
+            wrapper.soyquery(
+                f"select nunota from tgfcab where numnota={args.argumento} and statusnota='L' and codtipoper=1101"
+            )[0]["NUNOTA"]
+        ],
+        TipoImpressao.BOLETO,
+    )
+
+# wrapper.processar(bruh["NUARQUIVO"], config, False)
+# print(
+#     wrapper.soyquery(
+#         "select config from tgfixn where nuarquivo = " + str(bruh["NUARQUIVO"])
+#     )[0]["CONFIG"]
+# )
+
+# print(xml.dom.minidom.parseString(bruh["XML"]).toprettyxml(indent=" "))
 # print(wrapper.processar(bruh["NUARQUIVO"], config, False))
