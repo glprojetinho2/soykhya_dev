@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HTML Template</title>
+</head>
+
+<style>
+  header {
+    display: grid;
+    font-size: 0.8rem;
+    justify-items: center;
+    grid-template-columns: 1fr 1fr 0.8fr 1fr;
+    grid-template-rows: 0.3fr 1fr;
+  }
+
+  #logo {
+    display: block;
+    margin: auto;
+    margin-right: 1rem;
+    grid-column-start: 1;
+    grid-column-end: 2;
+    grid-row-start: 1;
+    grid-row-end: 3;
+  }
+
+  #telefone_etc {
+    font-size: 1rem;
+  }
+
+  #cnpj_etc {
+    text-align: left;
+    grid-column-start: 2;
+    grid-column-end: 3;
+    grid-row-start: 2;
+    grid-row-end: 3;
+  }
+
+  #qr_code {
+    text-align: left;
+    grid-column-start: 4;
+    grid-column-end: 5;
+    grid-row-start: 1;
+    grid-row-end: 3;
+  }
+
+  #razao {
+    font-size: 1rem;
+    grid-column-start: 2;
+    grid-column-end: 4;
+    grid-row-start: 1;
+    grid-row-end: 2;
+  }
+
+  table * {
+    border: 1px solid black;
+    padding: 10px;
+  }
+
+  table {
+    margin: 0px auto;
+  }
+</style>
+
+<body>
+  <header>
+    <img id="logo" src="soldasul.png" alt="Logo da Soldasul" width="200">
+    <div id="razao">
+      <b>Soldasul Comércio, Indústria Import Ltda</b>
+    </div>
+    <div id="cnpj_etc">
+      <b>87.020.756/0002-61 | 0960471871</b>
+      <br>Av. Paraná, n° 1495 - São Geraldo
+      <br>Porto Alegre, RS - 90240601
+    </div>
+    <div id="telefone_etc">
+      (51) 3393-0021<br>
+      soldasul.com.br
+    </div>
+    <div id="qr_code">
+      <img src="soldasul-qr.svg" width="120" alt="Logo da Soldasul" width="230">
+    </div>
+  </header>
+
+  <main>
+    <table>
+      <tr>
+        <th>Item</th>
+        <th>Cód.</th>
+        <th>Descrição</th>
+        <th>Un.</th>
+        <th>NCM</th>
+        <th>Qtd.</th>
+        <th>Valor</th>
+        <th>ICMS</th>
+        <th>IPI</th>
+        <th>Total</th>
+      </tr>
+      <tr>
+        <td>1</td>
+        <td>8326</td>
+        <td>MANILHA CURVA</td>
+        <td>UN</td>
+        <td>73269090</td>
+        <td>4</td>
+        <td>65,0000</td>
+        <td>17.0%</td>
+        <td>0.0%</td>
+        <td>R$260,00</td>
+      </tr>
+      <tr>
+        <td>1</td>
+        <td>8326</td>
+        <td>MANILHA CURVA</td>
+        <td>UN</td>
+        <td>73269090</td>
+        <td>4</td>
+        <td>65,0000</td>
+        <td>17.0%</td>
+        <td>0.0%</td>
+        <td>R$260,00</td>
+      </tr>
+      <tr>
+        <td>1</td>
+        <td>8326</td>
+        <td>MANILHA CURVA</td>
+        <td>UN</td>
+        <td>73269090</td>
+        <td>4</td>
+        <td>65,0000</td>
+        <td>17.0%</td>
+        <td>0.0%</td>
+        <td>R$260,00</td>
+      </tr>
+      <tr>
+        <td>1</td>
+        <td>8326</td>
+        <td>MANILHA CURVA</td>
+        <td>UN</td>
+        <td>73269090</td>
+        <td>4</td>
+        <td>65,0000</td>
+        <td>17.0%</td>
+        <td>0.0%</td>
+        <td>R$260,00</td>
+      </tr>
+      <tr>
+        <td>1</td>
+        <td>8326</td>
+        <td>MANILHA CURVA</td>
+        <td>UN</td>
+        <td>73269090</td>
+        <td>4</td>
+        <td>65,0000</td>
+        <td>17.0%</td>
+        <td>0.0%</td>
+        <td>R$260,00</td>
+      </tr>
+    </table>
+  </main>
+
+  <footer>
+    Soldasul kkkk
+  </footer>
+</body>
+
+</html>

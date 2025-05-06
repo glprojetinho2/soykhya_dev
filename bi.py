@@ -54,11 +54,14 @@ class ComponenteBI:
                 select_partes.append(
                     f"UTL_RAW.CAST_TO_VARCHAR2(UTL_RAW.CAST_TO_RAW(DBMS_LOB.SUBSTR(html5, {tamanho_pedaco}, {tamanho_pedaco * i + 1}))) AS a{i}"
                 )
-            clob = "".join(
-                wrapper.soyquery(
+            partes = [
+                x
+                for x in wrapper.soyquery(
                     f"select {", ".join(select_partes)} from tsigdg where nugdg = {nugdg}"
                 )[0].values()
-            )
+                if x
+            ]
+            clob = "".join(partes)
             binario = bytes.fromhex(clob)
             self.zip = binario
         self.titulo: str = componente["TITULO"]
@@ -76,9 +79,9 @@ class ComponenteBI:
         """
         with open(self.xml_caminho, "r") as f_cfg:
             xml_cfg = f_cfg.read()
-        with open(self.toml_caminho, "r") as t_cfg:
+        with open(self.toml_caminho, "r", encoding="utf-8") as t_cfg:
             toml_cfg = toml.loads(t_cfg.read())
-        mudanca: dict[str, str | int] = {"CONFIG": xml_cfg}
+        mudanca: dict[str, str | int | float | None] = {"CONFIG": xml_cfg}
         mudanca.update(
             {chave: toml_cfg.get(toml_chaves[chave]) for chave in toml_chaves.keys()}
         )
@@ -86,17 +89,54 @@ class ComponenteBI:
         componente_atualizado = wrapper.soysave(
             "Gadget", [{"pk": {"NUGDG": self.nugdg}, "mudanca": mudanca}]
         )[0]
-        data_alteracao = datetime.strptime(
-            componente_atualizado["DHALTER"], "%d/%m/%Y %H:%M:%S"
-        )
-        data_formatada = data_alteracao.strftime("%Y%m%d%H%M%S")
-        diretorio_base = f"html5component/{self.nugdg}_{data_formatada}"
+
+        def data_para_diretorio_base(data: str | int | float | None) -> str:
+            assert data
+            assert isinstance(data, str)
+            if "/" in data:
+                data_alteracao = datetime.strptime(str(data), "%d/%m/%Y %H:%M:%S")
+            else:
+                data_alteracao = datetime.strptime(str(data), "%d%m%Y %H:%M:%S")
+            data_formatada = data_alteracao.strftime("%Y%m%d%H%M%S")
+            return f"html5component/{self.nugdg}_{data_formatada}"
+
+        diretorio_base = data_para_diretorio_base(componente_atualizado["DHALTER"])
         zipar_pasta(
             self.html_pasta,
             self.html_caminho,
-            {"{{BASE_DIR}}": diretorio_base, "{{DOMINIO}}": DOMINIO},
+            {
+                "{{BASE_DIR}}": diretorio_base,
+                "{{DOMINIO}}": DOMINIO,
+            },
         )
         upload(self.nugdg, self.html_caminho)
+
+        def atualiza_diretorio_ate_dar_certo():
+            nonlocal diretorio_base
+            real_data_formatada = wrapper.soyquery(
+                f"select dhalter from tsigdg where nugdg={self.nugdg}"
+            )[0]["DHALTER"]
+            real_diretorio_base = data_para_diretorio_base(real_data_formatada)
+            if diretorio_base != real_diretorio_base:
+                diretorio_base = data_para_diretorio_base(
+                    wrapper.soysave(
+                        "Gadget",
+                        [{"pk": {"NUGDG": self.nugdg}, "mudanca": {"DHALTER": ""}}],
+                    )[0]["DHALTER"]
+                )
+                zipar_pasta(
+                    self.html_pasta,
+                    self.html_caminho,
+                    {
+                        "{{BASE_DIR}}": diretorio_base,
+                        "{{DOMINIO}}": DOMINIO,
+                    },
+                )
+                upload(self.nugdg, self.html_caminho)
+                atualiza_diretorio_ate_dar_certo()
+
+        atualiza_diretorio_ate_dar_certo()
+
         return diretorio_base
 
     @classmethod

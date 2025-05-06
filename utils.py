@@ -90,6 +90,14 @@ class TipoImpressao(Enum):
     BOLETO = 3
 
 
+class TipoObjetoBD(Enum):
+    TABELA = "T"
+    FUNCAO = "F"
+    PROCEDURE = "P"
+    TRIGGER = "R"
+    VIEW = "V"
+
+
 class Soywrapper:
     """
     Classe contendo wrappers para requests que o Soynkhya faz.
@@ -352,6 +360,49 @@ Query: {query}
         r = self.soyrequest("ImportacaoXMLNotasSP.importarArquivo", corpo).json()
         return r
 
+    def info_objeto_bd(self, nome: str, tipo: TipoObjetoBD):
+        r = self.soyrequest(
+            "DbExplorerSP.getObjectDetails",
+            {"dbObject": {"name": nome, "type": tipo.value}},
+        )
+        resposta = self.pegar_corpo(r)
+        assert "objectDetails" in resposta
+        detalhes = resposta["objectDetails"]
+        if tipo == TipoObjetoBD.TABELA:
+            colunas = [
+                {
+                    "nome": coluna[0],
+                    "pk": coluna[1],
+                    "tipo": coluna[2],
+                    "tamanho": coluna[3],
+                    "casas_decimais": coluna[4],
+                    "nulo": coluna[5],
+                    "padrao": coluna[6],
+                }
+                for coluna in detalhes["colunas"]
+            ]
+            return colunas
+        elif tipo == TipoObjetoBD.VIEW:
+            colunas = [
+                {
+                    "nome": coluna[0],
+                    "pk": coluna[1],
+                    "tipo": coluna[2],
+                    "tamanho": coluna[3],
+                    "casas_decimais": coluna[4],
+                    "nulo": coluna[5],
+                    "padrao": coluna[6],
+                }
+                for coluna in detalhes["colunas"]
+            ]
+            return {"colunas": colunas, "sql": detalhes["viewSql"]}
+        elif tipo == TipoObjetoBD.PROCEDURE:
+            return detalhes["code"]
+        elif tipo == TipoObjetoBD.FUNCAO:
+            return detalhes["code"]
+        elif tipo == TipoObjetoBD.TRIGGER:
+            return detalhes["code"]
+
     def processar(
         self,
         nuarquivo: int,
@@ -520,6 +571,25 @@ Query: {query}
         )
         return self.pegar_corpo(r)
 
+    def _imprimir_transacao(self, transacao: str):
+        url = f"https://localhost:9196/.localPrinting?params={self.mgecom["JSESSIONID"]}|{transacao}"
+        headers = {
+            "Origin": self.url,
+            "Referer": f"{self.url}/mgecom/SelecaoDocumento.xhtml5",
+            "Accept": "*/*",
+        }
+        requests.get(url, headers=headers, verify=False)
+
+    def imprimir_carta_de_correcao(self, nota):
+        r = self.soyrequest(
+            "ServicosNfeSP.imprimeCartaCorrecao",
+            {"notas": {"nota": [{"$": nota}]}},
+            "mgecom",
+        )
+        self.pegar_corpo(r)
+        transacao = r.json()["transactionId"]
+        self._imprimir_transacao(transacao)
+
     def imprimir_notas(
         self,
         notas: list[int],
@@ -543,13 +613,7 @@ Query: {query}
         resposta = self.soyrequest("ImpressaoNotasSP.imprimeDocumentos", corpo).json()
         if not gerar_pdf:
             transacao = resposta["transactionId"]
-            url = f"https://localhost:9196/.localPrinting?params={self.mgecom["JSESSIONID"]}|{transacao}"
-            headers = {
-                "Origin": self.url,
-                "Referer": f"{self.url}/mgecom/SelecaoDocumento.xhtml5",
-                "Accept": "*/*",
-            }
-            requests.get(url, headers=headers, verify=False)
+            self._imprimir_transacao(transacao)
         return transacao
 
     def gerar_lote(self, notas: list[int]):
@@ -697,7 +761,20 @@ Query: {query}
         )
         return self.pegar_corpo(r)
 
+    def texto_carta_de_correcao(self, nota: int):
+        r = self.soyrequest(
+            "ServicosNfeSP.getTextoCartaCorrecao",
+            {
+                "notas": {"nunota": {"$": nota}},
+            },
+            "mgecom",
+        )
+        return self.pegar_corpo(r)["carta"]["texto"]["$"]
+
     def carta_de_correcao(self, nota: int, texto: str):
+        """
+        Envia uma carta de correção para a `nota` com um `texto`.
+        """
         r = self.soyrequest(
             "ServicosNfeSP.enviarCartaCorrecao",
             {
@@ -706,9 +783,10 @@ Query: {query}
                     "texto": {"$": texto},
                 }
             },
-        ).json()
-        assert "responseBody" in r, self.erro(r)
-        assert r["responseBody"] == {}, self.erro(r)
+            "mgecom",
+        )
+        resposta = self.pegar_corpo(r)
+        assert resposta == {}, self.erro(r)
 
     def validar_importacao(
         self,
@@ -800,8 +878,8 @@ Query: {query}
                     "reprocessar": reprocessar,
                 }
             },
-        ).json()
-        return r
+        )
+        return self.pegar_corpo(r)
 
 
 def zipar_pasta(pasta: str, output: str, substituicoes: dict[str, str]):

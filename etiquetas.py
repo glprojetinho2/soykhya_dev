@@ -36,6 +36,7 @@ def emitir_etiquetas(nf: int, transportadora=None, volumes=None, usar_parceiro=N
     print(f"Empresa: {nota["NOMEPARC"]}")
     print(f"Cidade da empresa: {nota["NOMECID"]}")
     print(f"Parceiro Destino: {nota["NOMEPARCDEST"]}")
+    print(f"Cidade Destino: {nota.get("AD_CIDADE_DESTINO") or "Vazio"}")
 
     volumes = volumes or nota["QTDVOL"]
     print(f"Quantidade de volumes: {volumes}")
@@ -63,7 +64,7 @@ def emitir_etiquetas(nf: int, transportadora=None, volumes=None, usar_parceiro=N
     altura = largura * 89 / 111
 
     c = canvas.Canvas("etiqueta.pdf", (largura, altura))
-    for i in range(int(nota["QTDVOL"])):
+    for i in range(int(volumes)):
         c.setFont("Helvetica", 32)
         c.drawString(largura * 0.2, altura * 0.85, f"NF: {nf}")
         c.setFont("Helvetica", 16)

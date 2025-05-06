@@ -84,13 +84,16 @@ class Config:
             self.emitir_etiquetas = f.get("emitir_etiquetas") or []
             self.sempre_tem_transportadora = f.get("sempre_tem_transportadora") or []
 
-    def gravar(self):
-        conteudo = {
-            "dominio": self.dominio,
-            "codigo_autorizacao": self.codigo_autorizacao,
-        }
+    def atualizar_codigo(self, codigo):
+        self.codigo_autorizacao = codigo
+        config = toml.load(self.path)
+        config.update(
+            {
+                "codigo_autorizacao": self.codigo_autorizacao,
+            }
+        )
         with open(self.path, "w") as f:
-            toml.dump(conteudo, f)
+            toml.dump(config, f)
 
 
 CONFIG = Config()

@@ -54,37 +54,10 @@ novo_parser = subparsers.add_parser("novo", help="Cria um novo botão.")
 
 lista_parser = subparsers.add_parser("lista", help="Lista botões.")
 
-query_parser = subparsers.add_parser(
-    "query", help="Realiza uma query no banco de dados."
-)
-query_parser.add_argument("query", type=str, help="Query em SQL.")
-
-instancia_parser = subparsers.add_parser(
-    "instancia", help="Mostra o nome das instâncias associadas a uma tabela."
-)
-instancia_parser.add_argument("tabela", type=str, help="Nome da tabela (e.g. TGFCAB)")
-
-tabela_parser = subparsers.add_parser(
-    "tabela", help="Mostra o nome da tabela associadas a uma instância."
-)
-tabela_parser.add_argument(
-    "instancia", type=str, help="Nome parcial da instância (e.g. 'Cabecalho')"
-)
-
 remover_parser = subparsers.add_parser("remover", help="Remove um botões de ação.")
 remover_parser.add_argument("pks", nargs="*", help="pks dos botões")
 
-estrutura_parser = subparsers.add_parser(
-    "estrutura", help="Dá-te acesso à estrutura de uma entidade."
-)
-estrutura_parser.add_argument("entidade", help="Nome da entidade.")
-
 args = parser.parse_args()
-
-
-def estrutura(entidade: str):
-    r = wrapper.estrutura_de_entidade(entidade)
-    print(json.dumps(r, indent=2, ensure_ascii=False))
 
 
 def editar(id: int):
@@ -213,8 +186,7 @@ elif args.comando == "testar":
         print("Novo código de autorização requisitado por e-mail.")
         codigo = input("Coloque aqui um novo código de autorização: ")
         assert len(codigo) > 0, "Digite algum código."
-        CONFIG.codigo_autorizacao = codigo
-        CONFIG.gravar()
+        CONFIG.atualizar_codigo(codigo)
         botao.autorizar(codigo)
     ativar(botao)
 
@@ -259,27 +231,6 @@ elif args.comando == "lista":
     )
     print(json.dumps(botao_cru, indent=4, ensure_ascii=False))
 
-elif args.comando == "query":
-    print(json.dumps(wrapper.soyquery(args.query), indent=4, ensure_ascii=False))
-
-elif args.comando == "instancia":
-    instancias = wrapper.soyquery(
-        f"select nomeinstancia from tddins where nometab = '{args.tabela.upper()}'"
-    )
-    assert not isinstance(instancias, str)
-    for instancia in instancias:
-        print(instancia["NOMEINSTANCIA"])
-
-elif args.comando == "tabela":
-    instancias = wrapper.soyquery(
-        f"select nometab, nomeinstancia from tddins where upper(nomeinstancia) like '%{args.instancia.upper()}%'"
-    )
-    assert not isinstance(instancias, str)
-    for instancia in instancias:
-        print(instancia["NOMETAB"], instancia["NOMEINSTANCIA"])
-
-elif args.comando == "estrutura":
-    estrutura(args.entidade)
 
 elif args.comando == "remover":
     for pk in args.pks:

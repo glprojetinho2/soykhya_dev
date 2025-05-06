@@ -575,8 +575,21 @@ if __name__ == "__main__":
         "--justificativa", "-j", type=str, help="Justificativa do cancelamento."
     )
 
-    excluir_parser = subparsers.add_parser("excluir", help="Cancela nota.")
+    excluir_parser = subparsers.add_parser("excluir", help="Exclui documento.")
     excluir_parser.add_argument("nunota", type=int, help="Documento que será excluído.")
+
+    info_parser = subparsers.add_parser("info", help="Mostra informações do documento.")
+    info_parser.add_argument("nunota", type=int, help="Número único.")
+
+    carta_parser = subparsers.add_parser("carta", help="Cria carta de correção.")
+    carta_parser.add_argument("nf", type=int, help="Número da NF.")
+    carta_parser.add_argument("--conteudo", "-c", type=str, help="Conteúdo da carta.")
+    carta_parser.add_argument(
+        "--imprimir",
+        "-i",
+        action="store_true",
+        help="Imprime a carta de correção em vez de sobrescrevê-la.",
+    )
 
     nfe_parser = subparsers.add_parser("nfe", help="Fatura nota de venda.")
     nfe_parser.add_argument(
@@ -615,6 +628,24 @@ if __name__ == "__main__":
             numero_pedido, volumes, peso, cif_fob, conferente, impressoes=True
         )
 
+    elif args.comando == "carta":
+        _nunota = wrapper.soyquery(
+            "select nunota from tgfcab where statusnfe='A' and numnota=" + str(args.nf)
+        )
+        assert len(_nunota) > 0, "Nenhuma nota com esse número."
+        nunota = int(_nunota[0]["NUNOTA"])
+        if args.conteudo:
+            wrapper.carta_de_correcao(nunota, args.conteudo)
+            print(f"Carta de correção feita com o texto '{args.conteudo}'")
+
+        if args.imprimir:
+            wrapper.imprimir_carta_de_correcao(nunota)
+            print("Imprimindo carta de correção.")
+
+    elif args.comando == "info":
+        mostrar_informacoes_do_documento(
+            wrapper.soyquery(f"select * from tgfcab where nunota={args.nunota}")[0]
+        )
     elif args.comando == "excluir":
         wrapper.soyremove("CabecalhoNota", [{"NUNOTA": args.nunota}])
         print("Pronto.")

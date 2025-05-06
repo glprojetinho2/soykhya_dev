@@ -29,6 +29,31 @@ def importacao_teste(nome: str) -> ImportacaoXML:
                     ImportacaoXML.novo("xmls_teste/" + arquivo)
                 except:
                     pass
+                importacoes_cruas = wrapper.soyquery(
+                    f"select * from tgfixn where xml like '%SOYNKHYA:%'"
+                )
+                cnpj_empresa_padrao = wrapper.soyquery(
+                    f"select cgc from tsiemp where codemp={CONFIG.codigo_empresa_padrao}"
+                )[0]["CGC"]
+                top = wrapper.soyquery(
+                    "select codtipoper from tgfcab where tipmov='C' and statusnota='L' group by codtipoper order by count(codtipoper) desc fetch first 1 rows only"
+                )[0]["CODTIPOPER"]
+                wrapper.soysave(
+                    "ImportacaoXMLNotas",
+                    [
+                        {
+                            "pk": {"NUARQUIVO": i["NUARQUIVO"]},
+                            "mudanca": {
+                                "XML": str(i["XML"]).replace(
+                                    "{{EMPRESA}}", cnpj_empresa_padrao
+                                ),
+                                "CODTIPOPER": top,
+                                "CNPJDEST": cnpj_empresa_padrao,
+                            },
+                        }
+                        for i in importacoes_cruas
+                    ],
+                )
         importacao_crua = wrapper.soyquery(
             f"select * from tgfixn where xml like '%SOYNKHYA: {nome.upper()}%'"
         )
@@ -43,10 +68,106 @@ def gerar_configuracao_dos_testes():
 
 
 class TestImportacao(unittest.TestCase):
-    def test_associacao(self):
+    def test_ajuste_produtos(self):
         importacao = importacao_teste("simples")
-        print(importacao.erro)
-        print(importacao.nuarquivo)
+        produto = produto_normal()
+        ncm = "84716052"
+        wrapper.soysave(
+            "Produto", [{"pk": {"CODPROD": produto}, "mudanca": {"NCM": ncm}}]
+        )
+        top = wrapper.soyquery(
+            "select codtipoper from tgfcab where tipmov='O' and statusnota='L' group by codtipoper order by count(codtipoper) desc fetch first 1 rows only"
+        )[0]["CODTIPOPER"]
+        pedido = criar_documento(
+            int(top),
+            {"CODPARC": importacao.cru["CODPARC"]},
+            [
+                {
+                    "CODPROD": produto,
+                    "CODVOL": "UN",
+                    "QTDNEG": 2,
+                }
+            ],
+        )
+        wrapper.confirmar_documento([int(pedido["NUNOTA"])])
+        importacao.associar([{"CODPRODXML": 1, "CODPROD": produto, "UNIDADE": "UN"}])
+        importacao.ajustar_produtos()
+        produto_atualizado = wrapper.soyquery(
+            f"select ncm from tgfpro where codprod={produto}"
+        )[0]
+
+        self.assertEqual(produto_atualizado["NCM"], "95059000")
+
+    def test_produtos_xml(self):
+        for x in wrapper.soyquery(
+            "select * from tgfixn where config is not null and tipo='N' fetch first 100 rows only"
+        ):
+            importacao = ImportacaoXML(x, wrapper)
+            print("******************")
+            print(x["NUARQUIVO"])
+            print(x["XML"])
+            print(json.dumps(importacao.produtos_xml, indent=4))
+            print("******************")
+
+    def test_associacao_e_ligacao(self):
+        importacao = importacao_teste("simples")
+        top = wrapper.soyquery(
+            "select codtipoper from tgfcab where tipmov='O' and statusnota='L' group by codtipoper order by count(codtipoper) desc fetch first 1 rows only"
+        )[0]["CODTIPOPER"]
+
+        produto_qualquer = wrapper.soyquery(
+            "select codprod, codvol unidade from tgfpro where descrprod not like '%SOYNKHYA%' and ativo = 'S' fetch first 1 rows only"
+        )[0]
+        outro_produto_qualquer = wrapper.soyquery(
+            f"select codprod, codvol unidade from tgfpro where codprod <> {produto_qualquer["CODPROD"]} and descrprod not like '%SOYNKHYA%' and ativo = 'S' fetch first 1 rows only"
+        )[0]
+        produto_qualquer.update({"CODPRODXML": "1"})
+        outro_produto_qualquer.update({"CODPRODXML": "1"})
+        importacao.associar(
+            [produto_qualquer],
+        )
+        print(json.dumps(importacao.produtos_config, indent=4))
+        importacao = importacao.atualizar()
+        self.assertEqual(
+            importacao.produtos_config[0]["CODPROD"], str(produto_qualquer["CODPROD"])
+        )
+        self.assertEqual(
+            importacao.produtos_config[0]["UNIDADE"], str(produto_qualquer["UNIDADE"])
+        )
+
+        # Criação da ordem de compra
+        top = wrapper.soyquery(
+            "select codtipoper from tgfcab where tipmov='O' and statusnota='L' group by codtipoper order by count(codtipoper) desc fetch first 1 rows only"
+        )[0]["CODTIPOPER"]
+
+        pedido = criar_documento(
+            int(top),
+            {"CODPARC": importacao.cru["CODPARC"]},
+            [
+                {
+                    "CODPROD": outro_produto_qualquer["CODPROD"],
+                    "CODVOL": "UN",
+                    "QTDNEG": 2,
+                }
+            ],
+        )
+        wrapper.confirmar_documento([int(pedido["NUNOTA"])])
+
+        importacao.associar(
+            [outro_produto_qualquer],
+        )
+        importacao = importacao.atualizar()
+        importacao.ligar_pedidos_mais_antigos()
+        importacao = importacao.atualizar()
+        self.assertEqual(
+            importacao.produtos_config[0]["CODPROD"],
+            str(outro_produto_qualquer["CODPROD"]),
+        )
+        self.assertEqual(
+            importacao.produtos_config[0]["UNIDADE"],
+            str(outro_produto_qualquer["UNIDADE"]),
+        )
+        self.assertNotEqual(float(importacao.produtos_ligados[0]["QTDLIGADA"]), 0)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -231,6 +352,7 @@ def cliente() -> int:
                     "CGC_CPF": "02819864000165",
                     "TIPPESSOA": "J",
                     "CLIENTE": "S",
+                    "FORNECEDOR": "S",
                     "IDENTINSCESTAD": "",
                     "CLASSIFICMS": "C",
                     "NOMEPARC": nome,
@@ -285,9 +407,11 @@ def criar_documento(
                     "mudanca": {
                         "NUNOTA": nunota,
                         "CODPROD": 1,
-                        "SEQUENCIA": "0",
+                        "SEQUENCIA": 1,
                         "CODVOL": "UN",
                         "QTDNEG": 2,
+                        "USOPROD": "R",
+                        "VLRUNIT": 1,
                     }
                 }
             ],
@@ -299,6 +423,175 @@ def criar_documento(
             mudancas,
         )
     return wrapper.soyquery(f"select * from tgfcab where nunota = {nunota}")[0]
+
+
+def produto_normal():
+    """
+    O produto cujo código será retornado não deve ser em si um problema
+    em um faturamento ou em uma confirmação de documento.
+    """
+    nomes = [
+        "SOYNKHYAPRODUTONORMAL1",
+        "SOYNKHYAPRODUTONORMAL2",
+        "SOYNKHYAPRODUTONORMAL3",
+    ]
+    nome = random.choice(nomes)
+    _produto = wrapper.soyquery(f"select codprod from tgfpro where descrprod='{nome}'")
+    if len(_produto) == 0:
+        grupo_nome = "SOYNKHYAGRUPONORMAL"
+        _grupo = wrapper.soyquery(
+            f"select codgrupoprod from tgfgru where descrgrupoprod='{grupo_nome}'"
+        )
+        if len(_grupo) == 0:
+            codigo = wrapper.soyquery(
+                "select max(codgrupoprod)+100 a from tgfgru where analitico='N'"
+            )[0]["A"]
+            print(codigo)
+            _grupo = wrapper.soysave(
+                "GrupoProduto",
+                [
+                    {
+                        "mudanca": {
+                            "CODGRUPOPROD": codigo,
+                            "DESCRGRUPOPROD": grupo_nome,
+                            "ANALITICO": "S",
+                            "GRAU": 2,
+                            "LIMCURVA_B": 0,
+                            "LIMCURVA_C": 0,
+                            "COMCURVA_A": 0,
+                            "COMCURVA_B": 0,
+                            "COMCURVA_C": 0,
+                            "VALEST": "N",
+                            "ATIVO": "S",
+                            "CODNAT": 0,
+                            "CODCENCUS": 0,
+                            "CODPROJ": 0,
+                            "SOLCOMPRA": "N",
+                            "PEDIRLIB": "N",
+                            "APRPRODVDA": "S",
+                            "AGRUPALOCVALEST": "S",
+                            "PERCCMTNAC": 0,
+                            "PERCCMTIMP": 0,
+                            "PERCCMTFED": 0,
+                            "PERCCMTEST": 0,
+                            "PERCCMTMUN": 0,
+                            "DHALTER": "28/03/2025 16:57:05",
+                            "CODUSU": 12,
+                            "CALRUPTURAESTOQUE": "N",
+                        },
+                    }
+                ],
+            )
+        grupo = _grupo[0]["CODGRUPOPROD"]
+        _produto = wrapper.soysave(
+            "Produto",
+            [
+                {
+                    "mudanca": {
+                        "CODPROD": "",
+                        "DESCRPROD": nome,
+                        "CODGRUPOPROD": grupo,
+                        "CODVOL": "UN",
+                        "CODIPI": 0,
+                        "CODFORMPREC": 1,
+                        "MARGLUCRO": 42,
+                        "DECVLR": 4,
+                        "DECQTD": 4,
+                        "DESCMAX": 100,
+                        "PESOBRUTO": 0,
+                        "PESOLIQ": 0,
+                        "ALERTAESTMIN": "S",
+                        "PROMOCAO": "N",
+                        "TEMICMS": "S",
+                        "TEMISS": "N",
+                        "TEMIPIVENDA": "N",
+                        "TEMIPICOMPRA": "N",
+                        "TEMIRF": "N",
+                        "TEMINSS": "N",
+                        "PERCINSS": 0,
+                        "REDBASEINSS": 0,
+                        "USOPROD": "R",
+                        "ORIGPROD": "0",
+                        "TIPSUBST": "N",
+                        "TIPLANCNOTA": "A",
+                        "TIPCONTEST": "N",
+                        "ATIVO": "S",
+                        "APRESDETALHE": "N",
+                        "CODMOEDA": 0,
+                        "GRUPOICMS": 0,
+                        "LOCAL": "N",
+                        "DTALTER": "01/04/2025 10:47:59",
+                        "USALOCAL": "S",
+                        "CODVOLCOMPRA": "UN",
+                        "HRDOBRADA": "N",
+                        "ICMSGERENCIA": "N",
+                        "CODNAT": 0,
+                        "CODCENCUS": 0,
+                        "CODPROJ": 0,
+                        "TEMCIAP": "N",
+                        "IMPLAUDOLOTE": "N",
+                        "DIMENSOES": "N",
+                        "PADRAO": "S",
+                        "SOLCOMPRA": "N",
+                        "CONFERE": "S",
+                        "REMETER": "N",
+                        "ARREDPRECO": 0,
+                        "TEMCOMISSAO": "S",
+                        "COMPONOBRIG": "N",
+                        "AP1RCTEGO": "N",
+                        "CALCULOGIRO": "G",
+                        "UNIDADE": "MM",
+                        "CONFCEGAPESO": "N",
+                        "GRUPOPIS": "TODOS",
+                        "GRUPOCOFINS": "TODOS",
+                        "GRUPOCSSL": "TODOS",
+                        "CSTIPISAI": 99,
+                        "UTILIZAWMS": "N",
+                        "BALANCA": "N",
+                        "RECEITUARIO": "N",
+                        "EXIGEBENEFIC": "N",
+                        "GERAPLAPROD": "N",
+                        "PRODUTONFE": 0,
+                        "TIPGTINNFE": 0,
+                        "NCM": "82054000",
+                        "FLEX": "S",
+                        "QTDNFLAUDOSINT": 0,
+                        "TIPCONTESTWMS": "N",
+                        "LISTALPM": "N",
+                        "ONEROSO": "N",
+                        "REFMERCMED": "N",
+                        "TERMOLABIL": "N",
+                        "CONTROLADO": "N",
+                        "IDENCORRELATO": "N",
+                        "IDENCOSME": "N",
+                        "PRODFALTA": "N",
+                        "STATUSMED": 0,
+                        "MVAAJUSTADO": 0,
+                        "INFPUREZA": "N",
+                        "USASTATUSLOTE": "N",
+                        "USACODBARRASQTD": "N",
+                        "VALCAPM3": "N",
+                        "CSTIPIENT": 0,
+                        "IMPORDEMCORTE": "N",
+                        "TEMCREDPISCOFINSDEPR": "N",
+                        "UTILSMARTCARD": "N",
+                        "RECUPAVARIA": "N",
+                        "APRESFORM": "S",
+                        "CODBARCOMP": "N",
+                        "TEMMEDICAO": "N",
+                        "CODLOCALPADRAO": 0,
+                        "PERMCOMPPROD": "S",
+                        "DTVALDIF": "X",
+                        "DESCVENCONSUL": "N",
+                        "TIPOCONTAGEM": "D",
+                        "CALCDIFAL": "S",
+                        "STATUSNCM": "N",
+                    }
+                }
+            ],
+        )
+    produto = _produto[0]["CODPROD"]
+    return int(produto)
 
 
 def produto_liberacao():
@@ -318,7 +611,7 @@ def produto_liberacao():
                     "mudanca": {
                         "CODGRUPOPROD": "770000",
                         "DESCRGRUPOPROD": grupo_nome,
-                        "ANALITICO": "S",
+                        "ANALITICO": "N",
                         "GRAU": 2,
                         "LIMCURVA_B": 0,
                         "LIMCURVA_C": 0,
@@ -453,11 +746,8 @@ def produto_liberacao():
                         "PERMCOMPPROD": "S",
                         "DTVALDIF": "X",
                         "DESCVENCONSUL": "N",
-                        "MVAPADRAO": 1.78,
-                        "CODESPECST": 2030,
                         "TIPOCONTAGEM": "D",
                         "CALCDIFAL": "S",
-                        "CODBARDIFGTIN": "AVEREGINACAELORUM42",
                         "STATUSNCM": "N",
                     }
                 }
@@ -468,6 +758,23 @@ def produto_liberacao():
 
 
 class TestPedidos(unittest.TestCase):
+    def test_carta_correcao(self):
+        pedido = criar_documento(CONFIG.top_pedido)
+        wrapper.confirmar_documento([pedido["NUNOTA"]])
+        nota = wrapper.faturar_documento([pedido["NUNOTA"]], CONFIG.top_venda_nfe)[
+            "nota"
+        ]
+        wrapper.confirmar_documento([nota])
+        texto_esperado = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        wrapper.carta_de_correcao(int(nota), texto_esperado)
+        texto_real = wrapper.texto_carta_de_correcao(nota)
+        print(
+            wrapper.soyquery("select numnota from tgfcab where nunota = " + str(nota))
+        )
+        # wrapper.imprimir_carta_de_correcao(nota)
+        self.assertEqual(texto_esperado, texto_real)
+        input("bruh")
+
     def test_nfe_de_venda_com_evento_de_liberacao(self):
         produto = produto_liberacao()
         pedido = criar_documento(

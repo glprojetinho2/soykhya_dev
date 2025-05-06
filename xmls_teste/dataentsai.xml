@@ -45,7 +45,7 @@
         <CRT>3</CRT>
       </emit>
       <dest>
-        <CNPJ>33000167000101</CNPJ>
+        <CNPJ>{{EMPRESA}}</CNPJ>
         <xNome>PÉTROLEO BRASILEIRO S.A.</xNome>
         <enderDest>
           <xLgr>AV BOSTILEIRA</xLgr>
@@ -67,7 +67,7 @@
     <cProd>1</cProd>
     <cEAN>AVEREGINACAELORUM99</cEAN>
     <xProd>Broca</xProd>
-    <NCM>99999999</NCM>
+    <NCM>95059000</NCM>
     <CFOP>1910</CFOP>
     <uCom>UN</uCom>
     <qCom>1</qCom>
