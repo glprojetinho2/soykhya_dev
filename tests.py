@@ -73,7 +73,8 @@ class TestImportacao(unittest.TestCase):
         produto = produto_normal()
         ncm = "84716052"
         wrapper.soysave(
-            "Produto", [{"pk": {"CODPROD": produto}, "mudanca": {"NCM": ncm}}]
+            "Produto",
+            [{"pk": {"CODPROD": produto}, "mudanca": {"NCM": ncm, "ORIGPROD": 7}}],
         )
         top = wrapper.soyquery(
             "select codtipoper from tgfcab where tipmov='O' and statusnota='L' group by codtipoper order by count(codtipoper) desc fetch first 1 rows only"
@@ -93,10 +94,11 @@ class TestImportacao(unittest.TestCase):
         importacao.associar([{"CODPRODXML": 1, "CODPROD": produto, "UNIDADE": "UN"}])
         importacao.ajustar_produtos()
         produto_atualizado = wrapper.soyquery(
-            f"select ncm from tgfpro where codprod={produto}"
+            f"select * from tgfpro where codprod={produto}"
         )[0]
 
         self.assertEqual(produto_atualizado["NCM"], "95059000")
+        self.assertEqual(produto_atualizado["ORIGPROD"], "0")
 
     def test_produtos_xml(self):
         for x in wrapper.soyquery(

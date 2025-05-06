@@ -57,7 +57,15 @@ class ImportacaoXML:
             x = [a for a in p_xml if str(a["CODPROD"]) == str(c["CODPRODXML"])][0]
             self.wrapper.soysave(
                 "Produto",
-                [{"pk": {"CODPROD": c["CODPROD"]}, "mudanca": {"NCM": x["NCM"]}}],
+                [
+                    {
+                        "pk": {"CODPROD": c["CODPROD"]},
+                        "mudanca": {
+                            "NCM": x["NCM"],
+                            "ORIGPROD": x["impostos"]["ICMS"]["ORIGEM"],
+                        },
+                    }
+                ],
             )
 
     def associar(self, produtos: list[dict[str, str]]):
