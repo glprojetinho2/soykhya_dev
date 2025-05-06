@@ -72,9 +72,20 @@ class TestImportacao(unittest.TestCase):
         importacao = importacao_teste("simples")
         produto = produto_normal()
         ncm = "84716052"
+        _ipi_sojado = wrapper.soyquery(f"select CODIPI from tgfipi where percentual>0")
         wrapper.soysave(
             "Produto",
-            [{"pk": {"CODPROD": produto}, "mudanca": {"NCM": ncm, "ORIGPROD": 7}}],
+            [
+                {
+                    "pk": {"CODPROD": produto},
+                    "mudanca": {
+                        "NCM": ncm,
+                        "ORIGPROD": 7,
+                        "TEMIPICOMPRA": "S",
+                        "CODIPI": _ipi_sojado[0]["CODIPI"],
+                    },
+                }
+            ],
         )
         top = wrapper.soyquery(
             "select codtipoper from tgfcab where tipmov='O' and statusnota='L' group by codtipoper order by count(codtipoper) desc fetch first 1 rows only"
@@ -99,6 +110,10 @@ class TestImportacao(unittest.TestCase):
 
         self.assertEqual(produto_atualizado["NCM"], "95059000")
         self.assertEqual(produto_atualizado["ORIGPROD"], "0")
+        self.assertEqual(produto_atualizado["TEMIPICOMPRA"], "N")
+
+    def test_ajuste_muda_ipi(self):
+        pass
 
     def test_produtos_xml(self):
         for x in wrapper.soyquery(

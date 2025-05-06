@@ -55,15 +55,41 @@ class ImportacaoXML:
         p_xml = self.produtos_xml
         for c in p_config:
             x = [a for a in p_xml if str(a["CODPROD"]) == str(c["CODPRODXML"])][0]
+            print(x)
+            ipi = float(x["impostos"]["IPI"]["VALOR"])
+            _ipi_codigo = wrapper.soyquery(
+                f"select CODIPI from tgfipi where percentual={str(ipi)}"
+            )
+            ipi_cadastrado = len(_ipi_codigo) > 0
+            if not ipi_cadastrado:
+                novo_ipi = wrapper.soysave(
+                    "AliquotaIPI",
+                    [
+                        {
+                            "mudanca": {
+                                "CODIPI": "",
+                                "PERCENTUAL": ipi,
+                                "DESCRICAO": f"IPI %{ipi}",
+                            }
+                        }
+                    ],
+                )
+                ipi_codigo = novo_ipi[0]["CODIPI"]
+            else:
+                ipi_codigo = _ipi_codigo[0]["CODIPI"]
+            mudanca = {
+                "NCM": x["NCM"],
+                "ORIGPROD": x["impostos"]["ICMS"]["ORIGEM"],
+                "TEMIPICOMPRA": ("S" if ipi > 0 else "N"),
+                "CODIPI": ipi_codigo,
+            }
+            print(mudanca)
             self.wrapper.soysave(
                 "Produto",
                 [
                     {
                         "pk": {"CODPROD": c["CODPROD"]},
-                        "mudanca": {
-                            "NCM": x["NCM"],
-                            "ORIGPROD": x["impostos"]["ICMS"]["ORIGEM"],
-                        },
+                        "mudanca": mudanca,
                     }
                 ],
             )
@@ -90,7 +116,6 @@ class ImportacaoXML:
                 for x in produtos_config
                 if str(x["CODPRODXML"]) == str(produto["CODPRODXML"])
             ]
-            print(produtos_config)
             assert (
                 len(_produto_cfg) == 1
             ), f"O produto {produto["CODPRODXML"]} não corresponde a nenhum produto do xml.\n{json.dumps(produtos_config, indent=4)}"
@@ -218,7 +243,9 @@ class ImportacaoXML:
             ipi = {}
             ipi_elemento = imposto_elemento.find("IPI")
             if ipi_elemento is not None:
-                ipi["CST"] = se_existir(ipi_elemento, "IPITrib")
+                tributacao = ipi_elemento.find("IPITrib")
+                ipi["CST"] = tributacao.find("CST").text
+                ipi["VALOR"] = se_existir(tributacao, "vIPI")
 
             produto["impostos"] = {"ICMS": icms, "IPI": ipi}
             produtos.append(produto)
