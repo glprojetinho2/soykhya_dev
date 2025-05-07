@@ -4,6 +4,7 @@ import os
 import requests
 from typing import Any
 from enum import Enum
+import re
 
 HEADERS = {
     "Accept": "application/json, text/plain, */*",
@@ -16,6 +17,23 @@ class ErroDoSoynkhya(Exception):
     def __init__(self, message):
         self.message = message
         super().__init__(self.message)
+
+
+def substituicao_recursiva(pasta: str, padrao_regex: str, substituicao: str):
+    for raiz, _, arquivos in os.walk(pasta):
+        for nome in arquivos:
+            caminho = os.path.join(raiz, nome)
+            try:
+                with open(caminho, "r") as f:
+                    conteudo = f.read()
+
+                conteudo_atualizado = re.sub(padrao_regex, substituicao, conteudo)
+
+                if conteudo_atualizado != conteudo:
+                    with open(caminho, "w") as f:
+                        f.write(conteudo_atualizado)
+            except Exception as e:
+                print(f"Error processing {caminho}: {e}")
 
 
 def chaves_das_mudancas(

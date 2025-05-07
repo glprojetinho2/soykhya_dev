@@ -211,6 +211,9 @@ class ComponenteBI:
             with zipfile.ZipFile(self.html_caminho, "r") as zip_arquivo:
                 zip_arquivo.extractall(self.html_pasta)
 
+        substituicao_recursiva(
+            self.html_pasta, r"html5component/\d+_\d+", "{{BASE_DIR}}"
+        )
         with open(self.toml_caminho, "w") as toml_file:
             toml_str = f"""\
 {toml_chaves["TITULO"]}= "{self.titulo}"
