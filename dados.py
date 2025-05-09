@@ -39,6 +39,12 @@ query_parser.add_argument("query", type=str, help="Query em SQL.")
 query_parser.add_argument(
     "--toml", "-t", action="store_true", help="Mostra os resultados como toml."
 )
+query_parser.add_argument(
+    "--tabelas",
+    "-z",
+    type=str,
+    help="Nome das tabelas às quais pertencem os campos do resultado. Separe-as com vírgulas.",
+)
 
 instancia_parser = subparsers.add_parser(
     "instancia", help="Mostra o nome das instâncias associadas a uma tabela."
@@ -117,12 +123,25 @@ estrutura_parser.add_argument("entidade", help="Nome da entidade.")
 args = parser.parse_args()
 
 if args.comando == "query":
+    resultados = wrapper.soyquery(args.query)
+    colunas = {}
+    for tabela in args.tabelas.split(","):
+        instancia = wrapper.soyquery(
+            f"select nomeinstancia from tddins where upper(nometab) = upper('{tabela}')"
+        )[0]["NOMEINSTANCIA"]
+        colunas.update(wrapper.nome_colunas(instancia))
+    resultados_bonitinhos = []
+    for resultado in resultados:
+        print(f"{colunas=}")
+        resultados_bonitinhos.append(
+            {colunas.get(k) or k: v for k, v in resultado.items()}
+        )
     if args.toml:
-        for r in wrapper.soyquery(args.query):
+        for r in resultados_bonitinhos:
             print("*********************************")
             print(toml.dumps(r))
     else:
-        print(json.dumps(wrapper.soyquery(args.query), indent=4, ensure_ascii=False))
+        print(json.dumps(resultados_bonitinhos, indent=4, ensure_ascii=False))
 
 elif args.comando == "instancia":
     instancias = wrapper.soyquery(

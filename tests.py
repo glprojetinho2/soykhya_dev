@@ -1302,3 +1302,9 @@ class TestUtils(unittest.TestCase):
                 self.assertEqual(ff1.read(), "SUBSTITUÍDO")
             with open(dois, "r") as ff2:
                 self.assertEqual(ff2.read(), "SUBSTITUÍDO")
+
+
+class TestDados(unittest.TestCase):
+    def test_nomes_colunas(self):
+        colunas = wrapper.nome_colunas("LiberacaoLimite")
+        self.assertEqual(colunas["ANTECIPACAO"], "Antecipação")

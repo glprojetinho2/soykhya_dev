@@ -589,6 +589,12 @@ Query: {query}
         )
         return self.pegar_corpo(r)
 
+    def nome_colunas(self, entidade: str):
+        estrutura = self.estrutura_de_entidade(entidade)
+        resultado = {}
+        for info in estrutura["entity"]["field"]:
+            resultado[info["name"]] = info["description"]
+        return resultado
     def _imprimir_transacao(self, transacao: str):
         url = f"https://localhost:9196/.localPrinting?params={self.mgecom["JSESSIONID"]}|{transacao}"
         headers = {
