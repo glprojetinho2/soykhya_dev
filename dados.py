@@ -133,16 +133,26 @@ if args.comando == "query":
     colunas = {}
     instancias = []
     if args.tabelas:
+        info_campos: list[dict[str, str | dict[str, list[dict[str, str]]]]] = []
         for tabela in args.tabelas.split(","):
             instancia = wrapper.soyquery(
                 f"select nomeinstancia from tddins where upper(nometab) = upper('{tabela}')"
             )[0]["NOMEINSTANCIA"]
             instancias.append(instancia)
-            colunas.update(wrapper.nome_colunas(instancia))
-        resultados = []
+            estr = wrapper.estrutura_de_entidade(instancia)
+            assert isinstance(estr["entity"]["field"], list)
+            info_campos.extend(estr["entity"]["field"])
+            colunas.update(wrapper.nome_colunas(estr))
+        _resultados = []
 
         for resultado in resultados:
-            resultados.append({colunas.get(k) or k: v for k, v in resultado.items()})
+            _resultados.append(
+                {
+                    colunas.get(k) or k: formata_valores(info_campos, v, k)
+                    for k, v in resultado.items()
+                }
+            )
+        resultados = _resultados
     if len(resultados) > 0:
         if args.toml:
             for r in resultados:
