@@ -40,6 +40,12 @@ query_parser.add_argument(
     "--toml", "-t", action="store_true", help="Mostra os resultados como toml."
 )
 query_parser.add_argument(
+    "--tabela",
+    "-b",
+    action="store_true",
+    help="Mostra os resultados como uma tabela bonitinha.",
+)
+query_parser.add_argument(
     "--tabelas",
     "-z",
     type=str,
@@ -125,23 +131,36 @@ args = parser.parse_args()
 if args.comando == "query":
     resultados = wrapper.soyquery(args.query)
     colunas = {}
-    for tabela in args.tabelas.split(","):
-        instancia = wrapper.soyquery(
-            f"select nomeinstancia from tddins where upper(nometab) = upper('{tabela}')"
-        )[0]["NOMEINSTANCIA"]
-        colunas.update(wrapper.nome_colunas(instancia))
-    resultados_bonitinhos = []
-    for resultado in resultados:
-        print(f"{colunas=}")
-        resultados_bonitinhos.append(
-            {colunas.get(k) or k: v for k, v in resultado.items()}
-        )
-    if args.toml:
-        for r in resultados_bonitinhos:
-            print("*********************************")
-            print(toml.dumps(r))
+    instancias = []
+    if args.tabelas:
+        for tabela in args.tabelas.split(","):
+            instancia = wrapper.soyquery(
+                f"select nomeinstancia from tddins where upper(nometab) = upper('{tabela}')"
+            )[0]["NOMEINSTANCIA"]
+            instancias.append(instancia)
+            colunas.update(wrapper.nome_colunas(instancia))
+        resultados = []
+
+        for resultado in resultados:
+            resultados.append({colunas.get(k) or k: v for k, v in resultado.items()})
+    if len(resultados) > 0:
+        if args.toml:
+            for r in resultados:
+                print("*********************************")
+                print(toml.dumps(r))
+        elif args.tabela:
+            tabela_mostrada = Table(title=", ".join(instancias))
+            cons = Console()
+            chaves = resultados[0].keys()
+            for chave in chaves:
+                tabela_mostrada.add_column(chave)
+            for resultado in resultados:
+                tabela_mostrada.add_row(*[str(x) for x in resultado.values()])
+            cons.print(tabela_mostrada)
+        else:
+            print(json.dumps(resultados, indent=4, ensure_ascii=False))
     else:
-        print(json.dumps(resultados_bonitinhos, indent=4, ensure_ascii=False))
+        print("Nenhum resultado encontrado.")
 
 elif args.comando == "instancia":
     instancias = wrapper.soyquery(
