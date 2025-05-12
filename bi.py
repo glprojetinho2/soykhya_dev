@@ -77,7 +77,7 @@ class ComponenteBI:
         Grava o componente e retorna o seu diretório no servidor
         da Soynkhya.
         """
-        with open(self.xml_caminho, "r") as f_cfg:
+        with open(self.xml_caminho, "r", encoding="utf-8") as f_cfg:
             xml_cfg = f_cfg.read()
         with open(self.toml_caminho, "r", encoding="utf-8") as t_cfg:
             toml_cfg = toml.loads(t_cfg.read())
@@ -206,7 +206,7 @@ class ComponenteBI:
         os.makedirs(self.componente_pasta, exist_ok=True)
         if self.zip is not None:
             os.makedirs(self.html_pasta, exist_ok=True)
-            with open(self.html_caminho, "wb") as f:
+            with open(self.html_caminho, "wb", encoding="utf-8") as f:
                 f.write(self.zip)
             with zipfile.ZipFile(self.html_caminho, "r") as zip_arquivo:
                 zip_arquivo.extractall(self.html_pasta)
@@ -214,7 +214,7 @@ class ComponenteBI:
         substituicao_recursiva(
             self.html_pasta, r"html5component/\d+_\d+", "{{BASE_DIR}}"
         )
-        with open(self.toml_caminho, "w") as toml_file:
+        with open(self.toml_caminho, "w", encoding="utf-8") as toml_file:
             toml_str = f"""\
 {toml_chaves["TITULO"]}= "{self.titulo}"
 {"" if self.descricao else "# "}{toml_chaves["DESCRICAO"]}= "{self.descricao or "Descricao"}"
@@ -227,7 +227,7 @@ class ComponenteBI:
 """
             toml_file.write(toml_str)
 
-        with open(self.xml_caminho, "w") as xml_file:
+        with open(self.xml_caminho, "w", encoding="utf-8") as xml_file:
             xml_file.write(self.configuracao)
 
 
