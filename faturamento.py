@@ -371,6 +371,199 @@ def mostrar_informacoes_do_documento(info_nota: dict[str, str | float | int | No
     console.print(tabela_itens)
 
 
+def dict_para_aliquota(t: dict[str, str | list[str]]):
+    assert "observacao" in t
+    assert "origem" in t
+    assert "destino" in t
+    assert "aliquota" in t
+    assert "reducao" in t
+    assert "restricao1" in t
+    t["codigo_restricao1"] = t.get("codigo_restricao1") or [
+        "-1" for _ in t["restricao1"]
+    ]
+    if isinstance(t["restricao1"], list):
+        assert isinstance(t["codigo_restricao1"], list)
+        assert len(t["codigo_restricao1"]) == len(t["restricao1"])
+    else:
+        assert isinstance(t["restricao1"], str)
+        assert isinstance(t["codigo_restricao1"], str)
+    if isinstance(t["restricao2"], list):
+        assert isinstance(t["codigo_restricao2"], list)
+        assert len(t["codigo_restricao2"]) == len(t["restricao2"])
+    else:
+        assert isinstance(t["restricao2"], str)
+        assert isinstance(t["codigo_restricao2"], str)
+    if isinstance(t["restricao1"], list) and isinstance(t["restricao2"], list):
+        assert len(t["restricao1"]) == len(t["restricao2"])
+    assert "restricao2" in t
+    t["codigo_restricao2"] = t.get("codigo_restricao2") or [
+        "-1" for _ in t["restricao2"]
+    ]
+    assert "cst" in t
+    assert "outorga" in t
+    estados = {
+        "norte": ["AC", "AP", "AM", "PA", "RO", "RR", "TO"],
+        "nordeste": ["AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE"],
+        "sudeste": ["ES", "MG", "RJ", "SP"],
+        "sul": ["PR", "RS", "SC"],
+        "centro-oeste": ["DF", "GO", "MT", "MS"],
+        "tudo": [
+            "AC",
+            "AP",
+            "AM",
+            "PA",
+            "RO",
+            "RR",
+            "TO",
+            "AL",
+            "BA",
+            "CE",
+            "MA",
+            "PB",
+            "PE",
+            "PI",
+            "RN",
+            "SE",
+            "ES",
+            "MG",
+            "RJ",
+            "SP",
+            "PR",
+            "RS",
+            "SC",
+            "DF",
+            "GO",
+            "MT",
+            "MS",
+        ],
+    }
+
+    observacao = t["observacao"]
+    base = {
+        "ALIQUOTA": str(t["aliquota"]),
+        "REDBASE": str(t["reducao"]),
+        "ALIQFRETE": str(0 if t["aliquota"] == 4 else t["aliquota"]),
+        "CODTRIB": str(t["cst"]),
+        "OUTORGA": str(t["outorga"]),
+        "REDBASEESTRANGEIRA": 0,
+        "ALIQESTRANGEIRA": 4,
+        "BASICMMOD": 3,
+        "BASICMSTMOD": 6,
+    }
+    origem = t["origem"]
+    destino = t["destino"]
+    if origem in estados and isinstance(origem, str):
+        origem = estados[origem]
+    if destino in estados and isinstance(destino, str):
+        destino = estados[destino]
+
+    combinacoes_estados = []
+    if isinstance(origem, str) and isinstance(destino, str):
+        combinacoes_estados = [(origem, destino)]
+    elif isinstance(origem, str) and isinstance(destino, list):
+        combinacoes_estados = [(origem, d) for d in destino]
+    elif isinstance(origem, list) and isinstance(destino, str):
+        combinacoes_estados = [(o, destino) for o in origem]
+    elif isinstance(origem, list) and isinstance(destino, list):
+        combinacoes_estados = list(zip(origem, destino))
+
+    combinasoys_estados = []
+    for o, d in combinacoes_estados:
+        assert o in estados["tudo"]
+        assert d in estados["tudo"]
+        if d == o:
+            origem_codigo = wrapper.soyquery(
+                f"select coduf from tsiufs where uf='{o}'"
+            )[0]["CODUF"]
+            destino_codigo = origem_codigo
+        else:
+            res = wrapper.soyquery(
+                f"""
+                select (select coduf from tsiufs where uf='{o}') origem,
+                (select coduf from tsiufs where uf='{d}') destino
+                from dual
+                """
+            )[0]
+            origem_codigo = res["ORIGEM"]
+            destino_codigo = res["DESTINO"]
+        combinasoys_estados.append((origem_codigo, destino_codigo))
+
+    estados_dicts = []
+    for o, d in combinasoys_estados:
+        estados_dicts.append({"UFORIG": o, "UFDEST": d})
+        # "RS", "nordeste"
+        # [
+        #     {"UFORIG": 15, "UFDEST": 19},
+        #     {"UFORIG": 15, "UFDEST": 6},
+        #     {"UFORIG": 15, "UFDEST": 21},
+        #     {"UFORIG": 15, "UFDEST": 31},
+        #     {"UFORIG": 15, "UFDEST": 17},
+        #     {"UFORIG": 15, "UFDEST": 10},
+        #     {"UFORIG": 15, "UFDEST": 23},
+        #     {"UFORIG": 15, "UFDEST": 26},
+        #     {"UFORIG": 15, "UFDEST": 22},
+        # ]
+
+    combinacoes_restricoes = []
+    if isinstance(t["restricao1"], str) and isinstance(t["restricao2"], str):
+        combinacoes_restricoes = [
+            (
+                t["restricao1"],
+                t["codigo_restricao1"],
+                t["restricao1"],
+                t["codigo_restricao2"],
+            )
+        ]
+    elif isinstance(t["restricao1"], str) and isinstance(t["restricao2"], list):
+        for r in zip(t["restricao2"], t["codigo_restricao2"]):
+            combinacoes_restricoes.append((t["restricao1"], t["codigo_restricao1"], *r))
+    elif isinstance(t["restricao1"], list) and isinstance(t["restricao2"], str):
+        for r in zip(t["restricao1"], t["codigo_restricao1"]):
+            combinacoes_restricoes.append((*r, t["restricao2"], t["codigo_restricao2"]))
+    elif isinstance(t["restricao1"], list) and isinstance(t["restricao2"], list):
+        pass
+
+    restricoes_dicts: list[dict[str, str]] = []
+    for (
+        restricao1,
+        codigo_restricao1,
+        restricao2,
+        codigo_restricao2,
+    ) in combinacoes_restricoes:
+        restricoes_dicts.append(
+            {
+                "TIPRESTRICAO": str(restricao1),
+                "CODRESTRICAO": str(codigo_restricao1),
+                "TIPRESTRICAO2": str(restricao2),
+                "CODRESTRICAO2": str(codigo_restricao2),
+            }
+        )
+    _codigo_observacao = wrapper.soyquery(
+        f"select distinct codobspadrao from tgfobs where lower(observacao) = lower('{t["observacao"]}')"
+    )
+    if len(_codigo_observacao) > 0:
+        codigo_observacao = _codigo_observacao[0]["CODOBSPADRAO"]
+    else:
+        codigo_observacao = wrapper.soysave(
+            "ObservacaoNotasFiscais",
+            [{"mudanca": {"CODOBSPADRAO": "", "OBSERVACAO": str(t["observacao"])}}],
+        )[0]["CODOBSPADRAO"]
+
+    combinacoes = []
+    for e in estados_dicts:
+        for restricoes in restricoes_dicts:
+            juncao = {"pk": {"SEQUENCIA": "1"}, "mudanca": {}}
+            juncao["pk"].update(e)
+            juncao["pk"].update(restricoes)
+            juncao["mudanca"].update(base)
+            juncao["mudanca"].update({"CODOBSPADRAO": str(codigo_observacao)})
+            combinacoes.append(juncao.copy())
+    for a in combinacoes:
+        wrapper.soysave("AliquotaICMS", [a])
+        # wrapper.soyremove("AliquotaICMS", [a["pk"]])
+    return combinacoes
+
+
 def erros_da_nf(info_nota: dict[str, str | float | int | None]):
     """
     Dá um erro caso haja algum impedimento na nota.
@@ -616,6 +809,15 @@ if __name__ == "__main__":
         help="Usar outra quantidade de volumes na etiqueta (caso ela seja emitida).",
     )
 
+    lib_parser = subparsers.add_parser("lib", help="Assiste a liberação de pedidos.")
+    lib_parser.add_argument(
+        "--todos",
+        "-t",
+        help="Mostra todos os eventos de liberação ainda não liberados que foram solicitados hoje.",
+    )
+
+    icms_parser = subparsers.add_parser("icms", help="Cria regras de ICMS.")
+
     args = parser.parse_args()
 
     if args.comando == "tri":
@@ -671,3 +873,14 @@ if __name__ == "__main__":
         nota_de_venda(
             numero_pedido, volumes, peso, cif_fob, conferente, impressoes=True
         )
+    elif args.comando == "icms":
+        pasta = "icms"
+        for arquivo in os.listdir(pasta):
+            if arquivo == "exemplo.toml":
+                continue
+            caminho = os.path.join(pasta, arquivo)
+            if os.path.isfile(caminho):
+                with open(caminho, "r") as file:
+                    regra_toml = toml.loads(file.read())
+                    dict_para_aliquota(regra_toml)
+                    print("Pronto.")

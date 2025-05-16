@@ -36,6 +36,46 @@ def substituicao_recursiva(pasta: str, padrao_regex: str, substituicao: str):
                 print(f"Error processing {caminho}: {e}")
 
 
+def formata_valores(
+    info_campos: list[dict[str, str | dict[str, list[dict[str, str]]]]],
+    valor: str,
+    campo: str,
+) -> str:
+    """
+    Retorna a descrição da opção correspondente a `valor`
+    Obtem-se o argumento `estrutura` através do método "estrutura_de_entidade"
+    da classe Soywrapper, conforme mostrarei abaixo.
+    Exemplos de argumentos:
+        "CALCSTCONSUTRI" + "N" -> "Não"
+        "BASESTRED" + "S" -> "Considerar IPI p/ Redução"
+    Uso:
+    ```python
+        valor = "N"
+        campo = "CALCALIFCPST"
+        esperado = "Não"
+        estrutura1 = wrapper.estrutura_de_entidade("AliquotaICMS")["entity"]["field"]
+        estrutura2 = wrapper.estrutura_de_entidade("CabecalhoNota")["entity"]["field"]
+        estrutura1.extend(estrutura2)
+
+        resultado = formata_valores(estrutura1, valor, campo)
+        self.assertEqual(resultado, esperado)
+    ```
+    """
+    try:
+        info_campo = next(
+            (x for x in info_campos if isinstance(x, dict) and x["name"] == campo)
+        )
+    except StopIteration:
+        return valor
+    if "options" in info_campo and "option" in info_campo["options"]:
+        assert isinstance(info_campo["options"], dict)
+        opcoes = info_campo["options"]["option"]
+        for opcao in opcoes:
+            if opcao["value"] == valor:
+                return opcao["description"]
+    return valor
+
+
 def chaves_das_mudancas(
     mudancas: list[dict[str, dict[str, str | float | int | None]]],
 ) -> list[str]:
@@ -583,14 +623,22 @@ Query: {query}
         except json.JSONDecodeError:
             raise self.erro(r.text)
 
-    def estrutura_de_entidade(self, entidade: str):
+    def estrutura_de_entidade(
+        self, entidade: str
+    ) -> dict[
+        str, dict[str, str | list[dict[str, str | dict[str, list[dict[str, str]]]]]]
+    ]:
         r = self.soyrequest(
             "PersonalizedFilter.getEntityStructure", {"entity": {"name": entidade}}
         )
         return self.pegar_corpo(r)
 
-    def nome_colunas(self, entidade: str):
-        estrutura = self.estrutura_de_entidade(entidade)
+    def nome_colunas(
+        self,
+        estrutura: dict[
+            str, dict[str, str | list[dict[str, str | dict[str, list[dict[str, str]]]]]]
+        ],
+    ) -> dict[str, str]:
         resultado = {}
         for info in estrutura["entity"]["field"]:
             resultado[info["name"]] = info["description"]

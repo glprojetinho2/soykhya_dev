@@ -963,6 +963,27 @@ class TestPedidos(unittest.TestCase):
 
         print(resposta)
 
+    def test_dict_para_aliquota(self):
+        print(
+            json.dumps(
+                dict_para_aliquota(
+                    {
+                        "origem": "RS",
+                        "destino": "nordeste",
+                        "aliquota": 17,
+                        "reducao": 0,
+                        "restricao1": ["N", "X"],
+                        "restricao2": "H",
+                        "codigo_restricao2": "85159000",
+                        "cst": 70,
+                        "observacao": "Lei bostileira feita pra te roubar.",
+                        "outorga": 0,
+                    }
+                ),
+                indent=4,
+            )
+        )
+
 
 class TestBI(unittest.TestCase):
     def test_gravacao(self):

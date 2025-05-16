@@ -1,0 +1,79 @@
+# O comportamento da combinação de estados segue a mesma lógica da
+# combinação de restrições, exceto quando se usa texto que será convertido
+# em lista. A palavra "nordeste", por exemplo, será transformada numa lista de
+# siglas, então ela é uma lista mesmo sendo texto puro. Isso significa que
+# o computador tentará "zipar" (https://docs.python.org/3.3/library/functions.html#zip)
+# `origem` e `destino` se `destino` também for uma lista.
+# norte = ["AC", "AP", "AM", "PA", "RO", "RR", "TO"]
+# nordeste = ["AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE"]
+# sudeste = ["ES", "MG", "RJ", "SP"]
+# sul = ["PR", "RS", "SC"]
+# centro-oeste = ["DF", "GO", "MT", "MS"]
+# tudo = todos os estados
+origem="RS"
+destino=["nordeste", "ES"]
+aliquota=7
+reducao=67.58
+
+# RESTRIÇÕES
+# O Soynkhya permite que o usuário defina até duas restrições
+# na aplicabilidade de uma regra de ICMS.
+# Neste arquivo as restrições podem ser representadas tanto como
+# texto (e.g. "H") quanto lista (e.g. ["H", "F"]).
+# Eis o método usado para combinar tipos de restrição:
+# restricao1, restricao2 => (primeira combinação), (segunda combinação)...
+# "N", "H" => ("N", "H")
+# ["H", "F", "P"], "X" => ("H", "X"), ("F", "X"), ("P", "X")
+# ["H", "F", "P"], ["S", "H", "K"]  => ("H", "S"), ("F", "H"), ("P", "K")
+ 
+# Primeira restrição:
+# por produto = P
+# por cidade destino = D
+# por cidade origem = C
+# sem exceção = S
+# consumidor = N
+# por TOP = O
+# por grupo. ICMS do grupo de produto = J
+# por grupo de ICMS do parceiro = E
+# por grupo de ICMS do produto = I
+# por TARE = R
+# por perfil principal = T
+# Código da Empresa = M
+# Grupo de ICMS 2 = K
+# por Finalidade da Operação = Q
+# por CFOP = U
+# por NCM = H
+# por capítulo do NCM = B
+# por posição do NCM = F
+# por tipo de transporte de importação = A
+# por grupo de produtos = G
+# consumidor contribuinte = X
+# Produtor Rural = L
+restricao1=["N", "X"] # restricao1="P" ou restricao1=["P", "C"]
+codigo_restricao1=-1
+
+# Segunda restrição:
+# por grupo de ICMS do parceiro = E
+# por Finalidade da Operação = Q
+# por CFOP = U
+# por capítulo do NCM = B
+# por tipo de transporte de importação = A
+# por TARE = R
+# sem exceção = S
+# por NCM = H
+# por posição do NCM = F
+# por grupo de ICMS do produto = I
+# por produto = P
+# por grupo de produtos = G
+# por cidade destino = D
+# por TOP = O
+# por perfil principal = T
+# por cidade origem = C
+# por grupo. ICMS do grupo de produto = J
+# Código da Empresa = M
+# Grupo de ICMS 2 = K
+restricao2="H" # restricao="H" ou restricao=["H", "F"]
+codigo_restricao2="85159000" # Nesse caso o valor é um NCM.
+cst=70
+observacao="Lei bostileira feita pra te roubar."
+outorga=0 # % de outorga/diferimento
