@@ -50,7 +50,7 @@ reducao=67.58
 # consumidor contribuinte = X
 # Produtor Rural = L
 restricao1=["N", "X"] # restricao1="P" ou restricao1=["P", "C"]
-codigo_restricao1=-1
+codigo_restricao1=[-1, -1]
 
 # Segunda restrição:
 # por grupo de ICMS do parceiro = E
