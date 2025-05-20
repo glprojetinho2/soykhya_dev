@@ -1288,6 +1288,22 @@ class TestUtils(unittest.TestCase):
             ],
         )
 
+    def test_mudancas_para_records_nao_muda_argumento(self):
+        mudancas = [
+            {
+                "pk": {"IDBTNACAO": "131"},
+                "mudanca": {"DESCRICAO": "descricao"},
+            },
+            {
+                "pk": {"IDBTNACAO": "130"},
+                "mudanca": {"RESOURCEID": "resourceid"},
+            },
+        ]
+        esperado = copy.deepcopy(mudancas)
+        mudancas_para_records(mudancas)
+        print(esperado)
+        self.assertEqual(mudancas, esperado)
+
     def test_parametro_para_acionamento(self):
         resultado = parametro_para_acionamento(
             {

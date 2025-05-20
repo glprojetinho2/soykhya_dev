@@ -1,10 +1,12 @@
 import json
+import copy
 import zipfile
 import os
 import requests
 from typing import Any
 from enum import Enum
 import re
+
 
 HEADERS = {
     "Accept": "application/json, text/plain, */*",
@@ -122,7 +124,8 @@ def mudancas_para_records(
 ) -> list[dict[str, dict[str, str | float | int | None]]]:
     fields = chaves_das_mudancas(mudancas)
     records = []
-    for mudanca in mudancas:
+    m = copy.deepcopy(mudancas)
+    for mudanca in m:
         mudanca_item = mudanca.pop("mudanca")
         elemento_corpo = mudanca
         elemento_corpo["values"] = {}
