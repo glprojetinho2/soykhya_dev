@@ -78,7 +78,7 @@ def emitir_etiquetas(nf: int, transportadora=None, volumes=None, usar_parceiro=N
         c.setFont("Helvetica", 16)
         c.drawString(largura * 0.1, altura * 0.25, f"Volumes: {volumes}")
         c.setFont("Helvetica", 12)
-        c.drawString(largura * 0.8, altura * 0.15, f"{i+1}/{nota["QTDVOL"]}")
+        c.drawString(largura * 0.8, altura * 0.15, f"{i+1}/{volumes}")
         c.showPage()
     c.save()
     subprocess.run(["lp", "-d", "elgin", "etiqueta.pdf"])
