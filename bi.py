@@ -191,9 +191,10 @@ class ComponenteBI:
             ],
         )[0]
         id = componente["NUGDG"]
-        upload(id, html_padrao)
+        assert id is not None
+        upload(int(id), html_padrao)
 
-        resultado = cls(id)
+        resultado = cls(int(id))
         resultado.editar()
         # folguinha pro sistema fraco
         time.sleep(1)
@@ -206,7 +207,7 @@ class ComponenteBI:
         os.makedirs(self.componente_pasta, exist_ok=True)
         if self.zip is not None:
             os.makedirs(self.html_pasta, exist_ok=True)
-            with open(self.html_caminho, "wb", encoding="utf-8") as f:
+            with open(self.html_caminho, "wb") as f:
                 f.write(self.zip)
             with zipfile.ZipFile(self.html_caminho, "r") as zip_arquivo:
                 zip_arquivo.extractall(self.html_pasta)
