@@ -7,6 +7,66 @@ from config import *
 from enum import Enum
 
 
+class RegimeTributario(Enum):
+    SIMPLES_NACIONAL = 0
+    NORMAL = 1
+
+
+class CST(Enum):
+    TRIBUTADA_INTEGRALMENTE = "00"
+    TRIBUTADA_E_COM_ST = "10"
+    COM_REDUCAO_DA_BC = "20"
+    ISENTA_OU_NÃO_TRIBUTADA_E_COM_ST = "30"
+    ISENTA = "40"
+    NAO_TRIBUTADA = "41"
+    COM_SUSPENSAO = "50"
+    COM_DIFERIMENTO = "51"
+    ICMS_COBRADO_ANTERIORMENTE_POR_ST = "60"
+    COM_REDUCAO_DA_BC_E_ST = "70"
+    OUTRAS = "90"
+
+
+class CSOSN(Enum):
+    NAO_E_SIMPLES_NACIONAL = "0"
+    TRIBUTADA_PELO_SN_COM_PERMISSAO_DE_CREDITO = "101"
+    TRIBUTADA_PELO_SN_SEM_PERMISSAO_DE_CREDITO = "102"
+    ISENCAO_DO_ICMS_NO_SN_PARA_FAIXA_DE_RECEITA_BRUTA = "103"
+    TRIBUTADA_PELO_SN_COM_PERMISSAO_DE_CREDITO_E_COM_ST = "201"
+    TRIBUTADA_PELO_SN_SEM_PERMISSAO_DE_CREDITO_E_COM_ST = "202"
+    ISENCAO_DO_ICMS_NO_SN_PARA_FAIXA_DE_RECEITA_BRUTA_E_COM_ST = "203"
+    IMUNE = "300"
+    NAO_TRIBUTADA_PELO_SN = "400"
+    ICMS_COBRADO_ANTERIORMENTE_POR_ST_SUBSTITUIDO_OU_POR_ANTECIPACAO = "500"
+    OUTRO = "900"
+
+
+def margem_lucro(
+    regime_tributario: RegimeTributario, cst: CST, aliquota_icms: float, csosn: CSOSN
+) -> float:
+    """
+    Retorna a margem de lucro associada com os argumentos.
+    """
+    if regime_tributario == RegimeTributario.SIMPLES_NACIONAL:
+        if csosn in [CSOSN("201"), CSOSN("202"), CSOSN("203"), CSOSN("500")]:
+            return 30
+        else:
+            return 41.5
+    elif regime_tributario == RegimeTributario.NORMAL:
+        if cst == CST.TRIBUTADA_INTEGRALMENTE:
+            if aliquota_icms == 4:
+                return 40.25
+        elif cst == CST.TRIBUTADA_E_COM_ST:
+            return 41
+        elif cst in [
+            CST.ICMS_COBRADO_ANTERIORMENTE_POR_ST,
+            CST.ISENTA_OU_NÃO_TRIBUTADA_E_COM_ST,
+        ]:
+            return 30
+        elif cst == CST.COM_REDUCAO_DA_BC_E_ST:
+            return 41.5
+    return 35.7
+
+
 class StatusImportacao(Enum):
     PENDENTE = 0
     IMPORTADO = 2
@@ -50,19 +110,162 @@ class ImportacaoXML:
             self.wrapper,
         )
 
-    def ajustar_produtos(self):
+    def icms(
+        self,
+        x: dict[str, str | dict[str, str | dict[str, str | dict[str, str]]]],
+        observacao: str | None = None,
+    ):
+        assert isinstance(x["impostos"], dict)
+        assert isinstance(x["impostos"]["ICMS"], dict)
+        assert isinstance(x["NCM"], str)
+        impostos = x["impostos"]["ICMS"]
+        assert (
+            isinstance(impostos["ALIQSTSUPORTADA"], str)
+            or impostos["ALIQSTSUPORTADA"] is None
+        )
+        assert isinstance(impostos["ALIQFCP"], str) or impostos["ALIQFCP"] is None
+        assert isinstance(impostos["REDBASE"], str) or impostos["REDBASE"] is None
+        assert isinstance(impostos["CST"], str) or impostos["CST"] is None
+
+        def pedir_observacao():
+            # nonlocal observacao
+            if observacao is not None:
+                return wrapper.soysave(
+                    "ObservacaoNotasFiscais",
+                    [{"mudanca": {"CODOBSPADRAO": "", "OBSERVACAO": observacao}}],
+                )[0]["CODOBSPADRAO"]
+
+            obs_correta = input(
+                """\
+Digita a observação correta. Há um limite de 255 caracteres.
+Caso não queiras criar uma regra nova, aperta enter sem ter digitado nada:\
+"""
+            )
+            if obs_correta.strip() == "":
+                return None
+            assert len(obs_correta) < 256
+            codigo_observacao = wrapper.soysave(
+                "ObservacaoNotasFiscais",
+                [{"mudanca": {"CODOBSPADRAO": "", "OBSERVACAO": obs_correta}}],
+            )[0]["CODOBSPADRAO"]
+            return codigo_observacao
+
+        uforig = self.config_uf_empresa["xml"]
+        ufdest = self.config_uf_parceiro["xml"]
+
+        if uforig == ufdest:
+            uforig = self.wrapper.soyquery(
+                f"select coduf from tsiufs where uf='{uforig}'"
+            )[0]["CODUF"]
+            ufdest = uforig
+        else:
+            uforig = self.wrapper.soyquery(
+                f"select coduf from tsiufs where uf='{uforig}'"
+            )[0]["CODUF"]
+            ufdest = self.wrapper.soyquery(
+                f"select coduf from tsiufs where uf='{ufdest}'"
+            )[0]["CODUF"]
+
+        aliquota = float(impostos["ALIQSTSUPORTADA"] or 0) - float(
+            impostos["ALIQFCP"] or 0
+        )
+        aliquota_frete = aliquota if aliquota != 4 else 0
+
+        regras: list[dict[str, dict[str, int | float | str]]] = []
+        for tipo_de_restricao in ["N", "H"]:
+            regras.append(
+                {
+                    "mudanca": {
+                        "REDBASEESTRANGEIRA": 0,
+                        "ALIQUOTA": aliquota,
+                        "REDBASE": impostos["REDBASE"] or 0,
+                        "ALIQFRETE": aliquota_frete,
+                        "CODTRIB": impostos["CST"],
+                    },
+                    "pk": {
+                        "UFORIG": uforig,
+                        "SEQUENCIA": 1,
+                        "UFDEST": ufdest,
+                        "TIPRESTRICAO": tipo_de_restricao,
+                        "TIPRESTRICAO2": "H",
+                        "CODRESTRICAO": -1,
+                        "CODRESTRICAO2": x["NCM"],
+                    },
+                }
+            )
+        r = regras[0]
+        regras_existentes = self.wrapper.soyquery(
+            f"""
+        select * from tgficm i
+        join tgfobs o on o.codobspadrao=i.codobspadrao
+        where uforig = {r["pk"]["UFORIG"]}
+        and ufdest = {r["pk"]["UFDEST"]}
+        and tiprestricao in ('N', 'H')
+        and codrestricao2 = '{r["pk"]["CODRESTRICAO2"]}'
+        """
+        )
+        if len(regras_existentes) > 0:
+            r_e = regras_existentes[0]
+            if (
+                float(r["mudanca"]["ALIQUOTA"]) == float(r_e["ALIQUOTA"])
+                and float(r["mudanca"]["REDBASE"]) == float(r_e["REDBASE"])
+                and int(r["mudanca"]["CODTRIB"]) == int(r_e["CODTRIB"])
+            ):
+                return None
+            else:
+                print(
+                    f"""\
+Já existe uma regra de ICMS para o NCM {r_e["CODRESTRICAO2"]}.
+Tu terás duas opções: manter a regra atual ou sobrescrevê-la.
+Regra que será criada <=> Regra existente
+{r["mudanca"]["ALIQUOTA"]} <=> {r_e["ALIQUOTA"]} Alíquota
+{r["mudanca"]["REDBASE"]} <=> {r_e["REDBASE"]} Redução
+{r["mudanca"]["CODTRIB"]} <=> {r_e["CODTRIB"]} CST
+**********OBSERVAÇÃO DA NOTA*********************
+{self.observacao}
+**********OBSERVAÇÃO DA REGRA EXISTENTE**********
+{regras_existentes[0]["OBSERVACAO"]}
+*************************************************\
+"""
+                )
+                cod_observacao = pedir_observacao()
+                if cod_observacao is None:
+                    return None
+                for regra in regras:
+                    regra["mudanca"].update({"CODOBSPADRAO": cod_observacao})
+        else:
+            print(
+                f"""\
+Tu terás agora a opção de criar uma nova regra de icms.
+**********OBSERVAÇÃO DA NOTA**********
+{self.observacao}
+**************************************\
+"""
+            )
+            cod_observacao = pedir_observacao()
+            if cod_observacao is None:
+                return None
+            for regra in regras:
+                regra["mudanca"].update({"CODOBSPADRAO": cod_observacao})
+        regras_criadas = wrapper.soysave(
+            "AliquotaICMS",
+            regras,
+        )
+
+        return regras_criadas
+
+    def ajustar_produtos(self, observacao: str | None = None):
         p_config = self.produtos_config
         p_xml = self.produtos_xml
         for c in p_config:
             x = [a for a in p_xml if str(a["CODPROD"]) == str(c["CODPRODXML"])][0]
-            print(x)
             ipi = float(x["impostos"]["IPI"]["VALOR"])
-            _ipi_codigo = wrapper.soyquery(
+            _ipi_codigo = self.wrapper.soyquery(
                 f"select CODIPI from tgfipi where percentual={str(ipi)}"
             )
             ipi_cadastrado = len(_ipi_codigo) > 0
             if not ipi_cadastrado:
-                novo_ipi = wrapper.soysave(
+                novo_ipi = self.wrapper.soysave(
                     "AliquotaIPI",
                     [
                         {
@@ -83,7 +286,33 @@ class ImportacaoXML:
                 "TEMIPICOMPRA": ("S" if ipi > 0 else "N"),
                 "CODIPI": ipi_codigo,
             }
-            print(mudanca)
+            if int(x["impostos"]["ICMS"]["CST"]) in [70, 60, 10]:
+                # TODO: criar uma regra decente de imposto aqui
+                mudanca["GRUPOICMS"] = 1000
+
+            csosn = x["impostos"]["ICMS"]["CSOSN"] or "0"
+            cst = x["impostos"]["ICMS"]["CST"] or "1"
+            aliquota = x["impostos"]["ICMS"]["ALIQUOTA"] or 0
+            regime = 1 if csosn is None else 0
+            margem = margem_lucro(
+                RegimeTributario(regime), CST(cst), float(aliquota), CSOSN(csosn)
+            )
+            mudanca["MARGLUCRO"] = margem
+
+            ja_existe_codbarra = (
+                len(
+                    self.wrapper.soyquery(
+                        f"select 1 from tgfbar where codbarra='{x["CODBARRA"]}'"
+                    )
+                )
+                > 0
+            )
+            self.icms(x, observacao)
+            if not ja_existe_codbarra:
+                self.wrapper.soysave(
+                    "CodigoBarras",
+                    [{"mudanca": {"CODPROD": c["CODPROD"], "CODBARRA": x["CODBARRA"]}}],
+                )
             self.wrapper.soysave(
                 "Produto",
                 [
@@ -163,6 +392,19 @@ class ImportacaoXML:
         return resultado
 
     @property
+    def observacao(self) -> str | None:
+        el = self.__xml.find("NFe")
+        assert el is not None
+        el = el.find("infNFe")
+        assert el is not None
+        el = el.find("infAdic")
+        if el is not None:
+            el = el.find("infCpl")
+            if el is not None:
+                return el.text
+        return None
+
+    @property
     def impostos(self) -> Impostos_Financeiro:
         imposto_elemento = self.__config.find("impostos")
         assert imposto_elemento is not None
@@ -179,7 +421,9 @@ class ImportacaoXML:
         return Impostos_Financeiro.NAO_INFORMADO
 
     @property
-    def produtos_xml(self):
+    def produtos_xml(
+        self,
+    ) -> list[dict[str, str | dict[str, str | dict[str, str | None]] | None]]:
         produtos = []
 
         def se_existir(pai: ET.Element, nome: str) -> str | None:
@@ -191,33 +435,36 @@ class ImportacaoXML:
 
         for det in self.__xml.iter("det"):
             produto_elemento = det.find("prod")
-            produto = {}
-            produto["CODPROD"] = produto_elemento.find("cProd").text
-            produto["CODBARRA"] = produto_elemento.find("cEAN").text
-            produto["DESCRPROD"] = produto_elemento.find("xProd").text
-            produto["NCM"] = produto_elemento.find("NCM").text
-            produto["CODCFO"] = produto_elemento.find("CFOP").text
-            produto["CODVOL"] = produto_elemento.find("uCom").text
-            produto["QTDNEG"] = produto_elemento.find("qCom").text
-            produto["VLRUNIT"] = produto_elemento.find("vUnCom").text
-            produto["VLRTOT"] = produto_elemento.find("vProd").text
-            produto["CODBARRATRIB"] = produto_elemento.find("cEANTrib").text
-            produto["CODVOLTRIB"] = produto_elemento.find("uTrib").text
-            produto["QTDNEGTRIB"] = produto_elemento.find("qTrib").text
-            produto["VLRUNITTRIB"] = produto_elemento.find("vUnTrib").text
+            assert produto_elemento is not None
+            produto: dict[str, str | dict[str, str | dict[str, str | None]] | None] = {}
+            produto["CODPROD"] = se_existir(produto_elemento, "cProd")
+            produto["CODBARRA"] = se_existir(produto_elemento, "cEAN")
+            produto["DESCRPROD"] = se_existir(produto_elemento, "xProd")
+            produto["NCM"] = se_existir(produto_elemento, "NCM")
+            produto["CODCFO"] = se_existir(produto_elemento, "CFOP")
+            produto["CODVOL"] = se_existir(produto_elemento, "uCom")
+            produto["QTDNEG"] = se_existir(produto_elemento, "qCom")
+            produto["VLRUNIT"] = se_existir(produto_elemento, "vUnCom")
+            produto["VLRTOT"] = se_existir(produto_elemento, "vProd")
+            produto["CODBARRATRIB"] = se_existir(produto_elemento, "cEANTrib")
+            produto["CODVOLTRIB"] = se_existir(produto_elemento, "uTrib")
+            produto["QTDNEGTRIB"] = se_existir(produto_elemento, "qTrib")
+            produto["VLRUNITTRIB"] = se_existir(produto_elemento, "vUnTrib")
             produto["SEQUENCIA"] = se_existir(produto_elemento, "nItemPed")
-            produto["INDTOT"] = produto_elemento.find("indTot").text
+            produto["INDTOT"] = se_existir(produto_elemento, "indTot")
 
             imposto_elemento = det.find("imposto")
+            assert imposto_elemento is not None
             icms = {}
             icms_elemento = imposto_elemento.find("ICMS")
+            assert icms_elemento is not None
             icms["CST"] = se_existir(icms_elemento, "CST")
             icms["ORIGEM"] = se_existir(icms_elemento, "orig")
             icms["MODBC"] = se_existir(icms_elemento, "modBC")
             icms["REDBASE"] = se_existir(icms_elemento, "pRedBC")
             icms["BASE"] = se_existir(icms_elemento, "vBC")
             icms["ALIQUOTA"] = se_existir(icms_elemento, "pICMS")
-            icms["VLRICMS"] = se_existir(icms_elemento, "vICMS")
+            icms["VALOR"] = se_existir(icms_elemento, "vICMS")
             icms["ALIQFCP"] = se_existir(icms_elemento, "pFCP")
             icms["VLRFCP"] = se_existir(icms_elemento, "vFCP")
             icms["BASEFCP"] = se_existir(icms_elemento, "vBCFCP")
@@ -244,8 +491,9 @@ class ImportacaoXML:
             ipi_elemento = imposto_elemento.find("IPI")
             if ipi_elemento is not None:
                 tributacao = ipi_elemento.find("IPITrib")
-                ipi["CST"] = tributacao.find("CST").text
-                ipi["VALOR"] = se_existir(tributacao, "vIPI")
+                if tributacao is not None:
+                    ipi["CST"] = se_existir(tributacao, "CST")
+                    ipi["VALOR"] = se_existir(tributacao, "vIPI")
 
             produto["impostos"] = {"ICMS": icms, "IPI": ipi}
             produtos.append(produto)
@@ -510,7 +758,6 @@ class ImportacaoXML:
 
     def processar(self):
         config = wrapper.soyconfig("br.com.sankhya.cac.ImportacaoXMLNota.config")
-        print(wrapper.processar(self.nuarquivo, config, False))
         nova_importacao_crua = wrapper.soyquery(
             f"select * from tgfixn where nuarquivo={self.nuarquivo}"
         )

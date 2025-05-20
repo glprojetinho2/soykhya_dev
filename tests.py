@@ -1,4 +1,5 @@
 import unittest
+import copy
 import random
 import tempfile
 import pytest
@@ -24,7 +25,6 @@ def importacao_teste(nome: str) -> ImportacaoXML:
     else:
         for _, __, arquivos in os.walk("xmls_teste/"):
             for arquivo in arquivos:
-                print(arquivo)
                 try:
                     ImportacaoXML.novo("xmls_teste/" + arquivo)
                 except:
@@ -69,10 +69,23 @@ def gerar_configuracao_dos_testes():
 
 class TestImportacao(unittest.TestCase):
     def test_ajuste_produtos(self):
+        regras_existentes = wrapper.soyquery(
+            f"""
+select uforig, ufdest, codrestricao, codrestricao2, tiprestricao, tiprestricao2, sequencia from tgficm i
+join tgfobs o on o.codobspadrao=i.codobspadrao
+where observacao='SOYNKHYA'
+"""
+        )
+        if len(regras_existentes) > 0:
+            wrapper.soyremove("AliquotaICMS", regras_existentes)
         importacao = importacao_teste("simples")
         produto = produto_normal()
         ncm = "84716052"
         _ipi_sojado = wrapper.soyquery(f"select CODIPI from tgfipi where percentual>0")
+        codigo_barras = wrapper.soyquery(
+            f"select codbarra, codprod from tgfbar where codprod = {produto} or codbarra like '%REGINA%'"
+        )
+        wrapper.soyremove("CodigoBarras", codigo_barras)
         wrapper.soysave(
             "Produto",
             [
@@ -83,10 +96,13 @@ class TestImportacao(unittest.TestCase):
                         "ORIGPROD": 7,
                         "TEMIPICOMPRA": "S",
                         "CODIPI": _ipi_sojado[0]["CODIPI"],
+                        "MARGLUCRO": 11.1,
                     },
                 }
             ],
         )
+
+        # Associação - início
         top = wrapper.soyquery(
             "select codtipoper from tgfcab where tipmov='O' and statusnota='L' group by codtipoper order by count(codtipoper) desc fetch first 1 rows only"
         )[0]["CODTIPOPER"]
@@ -103,21 +119,155 @@ class TestImportacao(unittest.TestCase):
         )
         wrapper.confirmar_documento([int(pedido["NUNOTA"])])
         importacao.associar([{"CODPRODXML": 1, "CODPROD": produto, "UNIDADE": "UN"}])
-        importacao.ajustar_produtos()
+        # Associação - fim
+
+        importacao.ajustar_produtos("SOYNKHYA")
         produto_atualizado = wrapper.soyquery(
             f"select * from tgfpro where codprod={produto}"
         )[0]
 
-        self.assertEqual(produto_atualizado["NCM"], "95059000")
+        ncm_esperado = "95059000"
+        self.assertEqual(produto_atualizado["NCM"], ncm_esperado)
         self.assertEqual(produto_atualizado["ORIGPROD"], "0")
         self.assertEqual(produto_atualizado["TEMIPICOMPRA"], "N")
+        icms = wrapper.soyquery(
+            f"""
+            select * from tgficm i
+            join tgfobs o on o.codobspadrao=i.codobspadrao
+            where observacao='SOYNKHYA'
+            """
+        )[0]
+        self.assertEqual(str(icms["CODRESTRICAO2"]), ncm_esperado)
+        codigo_barras = wrapper.soyquery(
+            f"select codbarra from tgfbar where codprod={produto}"
+        )
+        self.assertEqual(codigo_barras, [{"CODBARRA": "AVEREGINACAELORUM89"}])
 
     def test_ajuste_muda_ipi(self):
         pass
 
+    def test_regra_icms(self):
+        imp = importacao_teste("simples")
+        regras_existentes = wrapper.soyquery(
+            f"""
+select uforig, ufdest, codrestricao, codrestricao2, tiprestricao, tiprestricao2, sequencia from tgficm i
+join tgfobs o on o.codobspadrao=i.codobspadrao
+where uforig = (select coduf from tsiufs where uf='{imp.config_uf_empresa["xml"]}')
+and ufdest = (select coduf from tsiufs where uf='{imp.config_uf_parceiro["xml"]}')
+and tiprestricao in ('N', 'H')
+and codrestricao2 = '39172900'
+"""
+        )
+        if len(regras_existentes) > 0:
+            wrapper.soyremove("AliquotaICMS", regras_existentes)
+        x = {
+            "CODPROD": "165158",
+            "CODBARRA": "7896451804266",
+            "DESCRPROD": "BRACO CHUVEIRO DUCHA BRANCO",
+            "NCM": "39172900",
+            "CODCFO": "5405",
+            "CODVOL": "PEC",
+            "QTDNEG": "5.0000",
+            "VLRUNIT": "20.3100000000",
+            "VLRTOT": "101.55",
+            "CODBARRATRIB": "7896451804266",
+            "CODVOLTRIB": "PEC",
+            "QTDNEGTRIB": "5.0000",
+            "VLRUNITTRIB": "20.31",
+            "SEQUENCIA": None,
+            "INDTOT": "1",
+            "impostos": {
+                "ICMS": {
+                    "CST": "20",
+                    "ORIGEM": "0",
+                    "MODBC": None,
+                    "REDBASE": "99.9",
+                    "BASE": None,
+                    "ALIQUOTA": None,
+                    "VALOR": None,
+                    "ALIQFCP": None,
+                    "VLRFCP": None,
+                    "BASEFCP": None,
+                    "MODBCST": None,
+                    "ALIQMVAST": None,
+                    "REDBASEST": None,
+                    "BASEST": None,
+                    "ALIQICMSST": None,
+                    "VLRICMSST": None,
+                    "BASEFCPST": None,
+                    "ALIQFCPST": None,
+                    "VLRFCPST": None,
+                    "VLRICMSDESONERADO": None,
+                    "MOTIVODESONERACAO": None,
+                    "CSOSN": None,
+                    "ALIQCREDITO": None,
+                    "VALORCREDITO": None,
+                    "BASESTRETIDO": "126.00",
+                    "ALIQSTSUPORTADA": "17.0000",
+                    "VLRICMSSUBSTITUTO": "7.80",
+                    "VLRICMSSTRET": "13.65",
+                },
+                "IPI": {"CST": "99", "VALOR": "0.00"},
+            },
+        }
+        resultado = imp.icms(x, observacao="SOYNKHYA")
+        for a in resultado:
+            del a["CODOBSPADRAO"]
+        self.assertEqual(
+            resultado,
+            [
+                {
+                    "REDBASEESTRANGEIRA": "0",
+                    "ALIQUOTA": "17",
+                    "REDBASE": "99.9",
+                    "ALIQFRETE": "17",
+                    "CODTRIB": "20",
+                },
+                {
+                    "REDBASEESTRANGEIRA": "0",
+                    "ALIQUOTA": "17",
+                    "REDBASE": "99.9",
+                    "ALIQFRETE": "17",
+                    "CODTRIB": "20",
+                },
+            ],
+        )
+        regras_existentes1 = wrapper.soyquery(
+            f"""
+        select * from tgficm i
+        join tgfobs o on o.codobspadrao=i.codobspadrao
+        where uforig = (select coduf from tsiufs where uf='{imp.config_uf_empresa["xml"]}')
+        and ufdest = (select coduf from tsiufs where uf='{imp.config_uf_parceiro["xml"]}')
+        and tiprestricao in ('N', 'H')
+        and codrestricao2 = '39172900'
+        """
+        )
+        resultado = imp.icms(x)
+        self.assertIsNone(resultado)
+        regras_existentes2 = wrapper.soyquery(
+            f"""
+        select * from tgficm i
+        join tgfobs o on o.codobspadrao=i.codobspadrao
+        where uforig = (select coduf from tsiufs where uf='{imp.config_uf_empresa["xml"]}')
+        and ufdest = (select coduf from tsiufs where uf='{imp.config_uf_parceiro["xml"]}')
+        and tiprestricao in ('N', 'H')
+        and codrestricao2 = '39172900'
+        """
+        )
+        self.assertEqual(regras_existentes1, regras_existentes2)
+        for r in regras_existentes1:
+            self.assertEqual(float(r["REDBASE"]), 99.9)
+            self.assertEqual(r["CODTRIB"], 20)
+            self.assertEqual(r["ALIQUOTA"], 17)
+            self.assertEqual(r["ALIQFRETE"], 17)
+            self.assertEqual(r["OBSERVACAO"], "SOYNKHYA")
+            self.assertEqual(r["REDBASEESTRANGEIRA"], 0)
+
+        # TODO: exclua uma só regra e deixa outra intacta
+
     def test_produtos_xml(self):
         for x in wrapper.soyquery(
-            "select * from tgfixn where config is not null and tipo='N' fetch first 100 rows only"
+            "select * from tgfixn where config is not null and tipo='N' fetch first 10 rows only"
         ):
             importacao = ImportacaoXML(x, wrapper)
             print("******************")
@@ -360,6 +510,16 @@ def cliente() -> int:
     pesquisa = wrapper.soyquery(f"select codparc from tgfpar where nomeparc='{nome}'")
     if len(pesquisa) > 0:
         return int(pesquisa[0]["CODPARC"])
+    cidade_mais_comum = wrapper.soyquery(
+        """
+select p.codcid from tgfcab c
+join tgfpar p on p.codparc=c.codparc
+where statusnfe='A' and p.codcid<>0
+group by p.codcid
+order by count(p.codcid) desc
+fetch first 1 rows only
+"""
+    )[0]["CODCID"]
     parceiro = wrapper.soysave(
         "Parceiro",
         [
@@ -373,7 +533,7 @@ def cliente() -> int:
                     "IDENTINSCESTAD": "",
                     "CLASSIFICMS": "C",
                     "NOMEPARC": nome,
-                    "CODCID": 1,
+                    "CODCID": cidade_mais_comum,
                 }
             }
         ],
@@ -428,6 +588,7 @@ def criar_documento(
                         "CODVOL": "UN",
                         "QTDNEG": 2,
                         "USOPROD": "R",
+                        "CODCFO": 5102,
                         "VLRUNIT": 1,
                     }
                 }
@@ -790,7 +951,6 @@ class TestPedidos(unittest.TestCase):
         )
         # wrapper.imprimir_carta_de_correcao(nota)
         self.assertEqual(texto_esperado, texto_real)
-        input("bruh")
 
     def test_nfe_de_venda_com_evento_de_liberacao(self):
         produto = produto_liberacao()
@@ -847,6 +1007,19 @@ class TestPedidos(unittest.TestCase):
             "CabecalhoNota",
             [{"pk": {"NUNOTA": nota["NUNOTA"]}, "mudanca": {"CODPARC": cliente()}}],
         )
+        wrapper.soysave(
+            "ItemNota",
+            [
+                {
+                    "pk": {
+                        "NUNOTA": nota["NUNOTA"],
+                        "CODPROD": 1,
+                        "SEQUENCIA": 1,
+                    },
+                    "mudanca": {"CODCFO": 5102},
+                }
+            ],
+        )
         nota_de_venda(pedido["NUNOTA"], 1, 1, "C", None, None)
 
     def test_nfe_triangular_com_erro_na_sefaz(self):
@@ -863,6 +1036,19 @@ class TestPedidos(unittest.TestCase):
         wrapper.soysave(
             "CabecalhoNota",
             [{"pk": {"NUNOTA": nota["NUNOTA"]}, "mudanca": {"CODPARC": cliente_nota}}],
+        )
+        wrapper.soysave(
+            "ItemNota",
+            [
+                {
+                    "pk": {
+                        "NUNOTA": nota["NUNOTA"],
+                        "CODPROD": 1,
+                        "SEQUENCIA": 1,
+                    },
+                    "mudanca": {"CODCFO": 5102},
+                }
+            ],
         )
         nota_triangular(pedido["NUNOTA"], 1, 1, "C", None, cliente_nota)
 
@@ -940,10 +1126,10 @@ class TestPedidos(unittest.TestCase):
         # )
 
         for nunotas in [
-            [criar_documento(CONFIG.top_orcamento)["NUNOTA"]],
+            [str(criar_documento(CONFIG.top_orcamento)["NUNOTA"])],
             [
-                criar_documento(CONFIG.top_orcamento)["NUNOTA"],
-                criar_documento(CONFIG.top_orcamento)["NUNOTA"],
+                str(criar_documento(CONFIG.top_orcamento)["NUNOTA"]),
+                str(criar_documento(CONFIG.top_orcamento)["NUNOTA"]),
             ],
         ]:
             print(wrapper.mgecom)
@@ -1343,5 +1529,39 @@ class TestUtils(unittest.TestCase):
 
 class TestDados(unittest.TestCase):
     def test_nomes_colunas(self):
-        colunas = wrapper.nome_colunas("LiberacaoLimite")
-        self.assertEqual(colunas["ANTECIPACAO"], "Antecipação")
+        estrutura = wrapper.estrutura_de_entidade("LiberacaoLimite")
+        colunas = wrapper.nome_colunas(estrutura)
+        self.assertEqual(colunas.get("ANTECIPACAO"), "Antecipação")
+
+    def test_formata_valores(self):
+        valor = "N"
+        campo = "CALCALIFCPST"
+        esperado = "Não"
+        estrutura1 = wrapper.estrutura_de_entidade("AliquotaICMS")["entity"]["field"]
+        estrutura2 = wrapper.estrutura_de_entidade("CabecalhoNota")["entity"]["field"]
+        estrutura1.extend(estrutura2)
+
+        resultado = formata_valores(estrutura1, valor, campo)
+        self.assertEqual(resultado, esperado)
+
+    def test_formata_valor_errado(self):
+        valor = "cfjdklsa"
+        campo = "CALCALIFCPST"
+        esperado = "cfjdklsa"
+        estrutura1 = wrapper.estrutura_de_entidade("AliquotaICMS")["entity"]["field"]
+        estrutura2 = wrapper.estrutura_de_entidade("CabecalhoNota")["entity"]["field"]
+        estrutura1.extend(estrutura2)
+
+        resultado = formata_valores(estrutura1, valor, campo)
+        self.assertEqual(resultado, esperado)
+
+    def test_formata_campo_errado(self):
+        valor = "N"
+        campo = "fjkdlsafçk"
+        esperado = "N"
+        estrutura1 = wrapper.estrutura_de_entidade("AliquotaICMS")["entity"]["field"]
+        estrutura2 = wrapper.estrutura_de_entidade("CabecalhoNota")["entity"]["field"]
+        estrutura1.extend(estrutura2)
+
+        resultado = formata_valores(estrutura1, valor, campo)
+        self.assertEqual(resultado, esperado)
