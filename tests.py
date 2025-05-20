@@ -340,6 +340,15 @@ and codrestricao2 = '39172900'
 @pytest.fixture(scope="session", autouse=True)
 def limpar():
     yield
+
+    regras = wrapper.soyquery(
+        f"""
+        select uforig, ufdest, codrestricao, codrestricao2, tiprestricao, tiprestricao2, sequencia from tgficm i
+        join tgfobs o on o.codobspadrao=i.codobspadrao
+        where lower(observacao)=lower('Lei bostileira feita pra te roubar.') or observacao like '%SOYNKHYA%'
+        """
+    )
+    wrapper.soyremove("AliquotaICMS", regras)
     notas_aprovadas = wrapper.soyquery(
         "select nunota from tgfcab where observacao like '%SOYNKHYA: %' and statusnfe='A'"
     )
@@ -1149,26 +1158,96 @@ class TestPedidos(unittest.TestCase):
 
         print(resposta)
 
-    def test_dict_para_aliquota(self):
-        print(
-            json.dumps(
-                dict_para_aliquota(
-                    {
-                        "origem": "RS",
-                        "destino": "nordeste",
-                        "aliquota": 17,
-                        "reducao": 0,
-                        "restricao1": ["N", "X"],
-                        "restricao2": "H",
-                        "codigo_restricao2": "85159000",
-                        "cst": 70,
-                        "observacao": "Lei bostileira feita pra te roubar.",
-                        "outorga": 0,
-                    }
-                ),
-                indent=4,
-            )
+    def test_dict_para_aliquota_chuveirinho(self):
+        obs = "Lei bostileira feita pra te roubar."
+        regras = wrapper.soyquery(
+            f"""
+            select uforig, ufdest, codrestricao, codrestricao2, tiprestricao, tiprestricao2, sequencia from tgficm i
+            join tgfobs o on o.codobspadrao=i.codobspadrao
+            where lower(observacao)=lower('Lei bostileira feita pra te roubar.') or observacao like '%SOYNKHYA%'
+            """
         )
+        wrapper.soyremove("AliquotaICMS", regras)
+        dict_para_aliquota(
+            {
+                "origem": "RS",
+                "destino": ["nordeste", "ES"],
+                "aliquota": 17,
+                "reducao": 29,
+                "restricao1": ["N", "X"],
+                "restricao2": "H",
+                "codigo_restricao2": "85159000",
+                "cst": 70,
+                "observacao": obs,
+                "outorga": 3,
+            }
+        )
+        regras = wrapper.soyquery(
+            f"select * from tgficm i join tgfobs o on o.codobspadrao=i.codobspadrao where lower(observacao)=lower('{obs}')"
+        )
+        self.assertEqual(len(regras), 20)
+        estados = wrapper.soyquery("select coduf, uf from tsiufs")
+        nordeste = [
+            e["CODUF"]
+            for e in estados
+            if e["UF"] in ["AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE", "ES"]
+        ]
+        rs = [e["CODUF"] for e in estados if e["UF"] == "RS"][0]
+        for regra in regras:
+            self.assertIn(regra["TIPRESTRICAO"], ["N", "X"])
+            self.assertEqual(regra["TIPRESTRICAO2"], "H")
+            self.assertEqual(regra["UFORIG"], rs)
+            self.assertIn(regra["UFDEST"], nordeste)
+            self.assertEqual(regra["CODRESTRICAO2"], 85159000)
+            self.assertEqual(regra["CODTRIB"], 70)
+            self.assertEqual(regra["ALIQUOTA"], 17)
+            self.assertEqual(regra["OUTORGA"], 3)
+            self.assertEqual(regra["REDBASE"], 29)
+            self.assertEqual(regra["REDBASEESTRANGEIRA"], 0)
+
+    def test_dict_para_aliquota_pares(self):
+        obs = "Lei bostileira feita pra te roubar."
+        regras = wrapper.soyquery(
+            f"""
+            select uforig, ufdest, codrestricao, codrestricao2, tiprestricao, tiprestricao2, sequencia from tgficm i
+            join tgfobs o on o.codobspadrao=i.codobspadrao
+            where lower(observacao)=lower('Lei bostileira feita pra te roubar.') or observacao like '%SOYNKHYA%'
+            """
+        )
+        wrapper.soyremove("AliquotaICMS", regras)
+        dict_para_aliquota(
+            {
+                "origem": "sul",
+                "destino": ["ES", "AL", "GO"],
+                "aliquota": 12,
+                "reducao": 0,
+                "restricao1": ["N", "X"],
+                "restricao2": "H",
+                "codigo_restricao2": "85159000",
+                "cst": 60,
+                "observacao": obs,
+                "outorga": 3,
+            }
+        )
+        regras = wrapper.soyquery(
+            f"select * from tgficm i join tgfobs o on o.codobspadrao=i.codobspadrao where lower(observacao)=lower('{obs}')"
+        )
+        self.assertEqual(len(regras), 6)
+        rs = wrapper.soyquery("select coduf from tsiufs where uf='RS'")[0]["CODUF"]
+        estados = wrapper.soyquery("select coduf, uf from tsiufs")
+        origens = [e["CODUF"] for e in estados if e["UF"] in ["PR", "RS", "SC"]]
+        destinos = [e["CODUF"] for e in estados if e["UF"] in ["ES", "AL", "GO"]]
+        for regra in regras:
+            self.assertIn(regra["TIPRESTRICAO"], ["N", "X"])
+            self.assertIn(regra["UFORIG"], origens)
+            self.assertIn(regra["UFDEST"], destinos)
+            self.assertEqual(regra["TIPRESTRICAO2"], "H")
+            self.assertEqual(regra["CODRESTRICAO2"], 85159000)
+            self.assertEqual(regra["CODTRIB"], 60)
+            self.assertEqual(regra["ALIQUOTA"], 12)
+            self.assertEqual(regra["OUTORGA"], 3)
+            self.assertEqual(regra["REDBASE"], 0)
+            self.assertEqual(regra["REDBASEESTRANGEIRA"], 0)
 
 
 class TestBI(unittest.TestCase):
