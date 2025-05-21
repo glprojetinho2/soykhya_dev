@@ -1,4 +1,6 @@
 import json
+from rich.console import Console
+from rich.table import Table
 import copy
 import zipfile
 import os
@@ -524,6 +526,44 @@ Query: {query}
             {"liberacoes": {"liberacao": mudancas}},
         ).json()
 
+    def printar_tabela(
+        self, __resultados: list[dict[str, str]], tabelas=[], _colunas={}
+    ):
+        resultados = copy.deepcopy(__resultados)
+        if len(__resultados) > 0:
+            colunas = copy.deepcopy(_colunas)
+            instancias = []
+            if len(tabelas) > 0:
+                info_campos: list[dict[str, str | dict[str, list[dict[str, str]]]]] = []
+                print(tabelas)
+                for tabela in tabelas:
+                    instancia = self.soyquery(
+                        f"select nomeinstancia from tddins where upper(nometab) = upper('{tabela}')"
+                    )[0]["NOMEINSTANCIA"]
+                    instancias.append(instancia)
+                    estr = self.estrutura_de_entidade(instancia)
+                    assert isinstance(estr["entity"]["field"], list)
+                    info_campos.extend(estr["entity"]["field"])
+                    colunas.update(self.nome_colunas(estr))
+                _resultados = []
+
+                for resultado in resultados:
+                    _resultados.append(
+                        {
+                            colunas.get(k) or k: formata_valores(info_campos, v, k)
+                            for k, v in resultado.items()
+                        }
+                    )
+                resultados = _resultados
+            tabela_mostrada = Table(title=", ".join(instancias))
+            cons = Console()
+            chaves = resultados[0].keys()
+            for chave in chaves:
+                tabela_mostrada.add_column(chave)
+            for resultado in resultados:
+                tabela_mostrada.add_row(*[str(x) for x in resultado.values()])
+            cons.print(tabela_mostrada)
+
     def faturar_documento(
         self,
         notas: list[int],
@@ -646,6 +686,7 @@ Query: {query}
         for info in estrutura["entity"]["field"]:
             resultado[info["name"]] = info["description"]
         return resultado
+
     def _imprimir_transacao(self, transacao: str):
         url = f"https://localhost:9196/.localPrinting?params={self.mgecom["JSESSIONID"]}|{transacao}"
         headers = {

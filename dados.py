@@ -128,45 +128,18 @@ estrutura_parser.add_argument("entidade", help="Nome da entidade.")
 
 args = parser.parse_args()
 
+
 if args.comando == "query":
     resultados = wrapper.soyquery(args.query)
-    colunas = {}
-    instancias = []
-    if args.tabelas:
-        info_campos: list[dict[str, str | dict[str, list[dict[str, str]]]]] = []
-        for tabela in args.tabelas.split(","):
-            instancia = wrapper.soyquery(
-                f"select nomeinstancia from tddins where upper(nometab) = upper('{tabela}')"
-            )[0]["NOMEINSTANCIA"]
-            instancias.append(instancia)
-            estr = wrapper.estrutura_de_entidade(instancia)
-            assert isinstance(estr["entity"]["field"], list)
-            info_campos.extend(estr["entity"]["field"])
-            colunas.update(wrapper.nome_colunas(estr))
-        _resultados = []
-
-        for resultado in resultados:
-            _resultados.append(
-                {
-                    colunas.get(k) or k: formata_valores(info_campos, v, k)
-                    for k, v in resultado.items()
-                }
-            )
-        resultados = _resultados
     if len(resultados) > 0:
         if args.toml:
             for r in resultados:
                 print("*********************************")
                 print(toml.dumps(r))
         elif args.tabela:
-            tabela_mostrada = Table(title=", ".join(instancias))
-            cons = Console()
-            chaves = resultados[0].keys()
-            for chave in chaves:
-                tabela_mostrada.add_column(chave)
-            for resultado in resultados:
-                tabela_mostrada.add_row(*[str(x) for x in resultado.values()])
-            cons.print(tabela_mostrada)
+            printar_tabela(
+                resultados, [x for x in (args.tabelas or "").split(",") if x != ""]
+            )
         else:
             print(json.dumps(resultados, indent=4, ensure_ascii=False))
     else:
