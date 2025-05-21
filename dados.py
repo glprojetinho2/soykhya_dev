@@ -137,7 +137,7 @@ if args.comando == "query":
                 print("*********************************")
                 print(toml.dumps(r))
         elif args.tabela:
-            printar_tabela(
+            wrapper.printar_tabela(
                 resultados, [x for x in (args.tabelas or "").split(",") if x != ""]
             )
         else:
