@@ -12,7 +12,7 @@ import re
 import argparse
 
 parser = argparse.ArgumentParser(
-    description="Faça botões de ação sem ter contato com o Soynkhya :)"
+    description="Interaja com o banco de dados sem usar o Soynkhya :)"
 )
 subparsers = parser.add_subparsers(dest="comando")
 

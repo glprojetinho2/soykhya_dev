@@ -4,10 +4,13 @@ Assegura-te de que o `python` e o `pipenv` estão instalados.
 Executa os seguintes comandos:
 ```bash
 python -m pipenv shell
+python dados.py -h
 python acao.py -h
 python bi.py -h
+python faturamento.py -h
+python importacao.py -h
 ```
-Lê o manual atentamente (RTFM) e começa a mourejar.
+Lê o manual e as mensagens de ajuda atentamente (RTFM) e começa a mourejar.
 
 ## ICMS
 
@@ -28,5 +31,23 @@ cst=20
 observacao="Lei bostileira feita pra te roubar."
 outorga=0 
 ```
-Agora só falta executar o comando `python faturamento.py icms`. Depois de executá-lo, tu podes verificar se as regras de ICMS foram realmente criadas com o comando `python dados.py query "select * from tgficm where tiprestricao in ('N', 'X') and tiprestricao2='H' and codrestricao2='85159000' and uforig=(select coduf from tsiufs where uf='AL') and ufdest=(select coduf from tsiufs where uf='AL')"`, mas isso não deve ser necessário.
-
+Agora só falta executar o comando `python faturamento.py icms`. Depois de executá-lo, tu podes verificar se as regras de ICMS foram realmente criadas com o seguinte comando:
+```bash
+python dados.py query "
+select * from tgficm
+where tiprestricao in ('N', 'X')
+and tiprestricao2='H'
+and codrestricao2='85159000'
+and uforig=(select coduf from tsiufs where uf='AL')
+and ufdest=(select coduf from tsiufs where uf='AL')
+" -z tgficm -b
+```
+ou
+```bash
+python dados.py query "
+select * from tgficm i
+join tgfobs o on o.codobspadrao=i.codobspadrao
+where lower(observacao)=lower('Lei bostileira feita pra te roubar.')
+" -z tgficm -b
+```
+Mas isso não deve ser necessário.
