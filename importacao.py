@@ -1018,6 +1018,21 @@ if __name__ == "__main__":
     importar_parser.add_argument(
         "-o", "--ocs", type=int, help="Número das ordens de compra."
     )
+    importar_parser.add_argument(
+        "-c", "--codigo", type=str, help="Associação por código (i.e. '7777,1234,*')."
+    )
+    importar_parser.add_argument(
+        "-s",
+        "--sequencia",
+        type=str,
+        help="Associação por sequência dos itens nas OCs (i.e. '3,1,2').",
+    )
+    importar_parser.add_argument(
+        "-o",
+        "--ordem",
+        action="store_true",
+        help="Associação na ordem das OCs.",
+    )
 
     args = parser.parse_args()
 
@@ -1031,7 +1046,14 @@ if __name__ == "__main__":
             f.write(importacao_xml)
         print("Sucesso.")
     if args.comando == "importar":
-        comando_importar(args.danfe, args.ocs)
+        comando_importar(
+            args.danfe,
+            args.ocs,
+            None,
+            args.codigo,
+            args.sequencia,
+            args.ordem,
+        )
     if args.comando == "gravar":
         caminho = os.path.join("importacoes", f"{args.nuarquivo}.xml")
         os.path.exists(caminho)
