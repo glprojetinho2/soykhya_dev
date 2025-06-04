@@ -1028,7 +1028,7 @@ if __name__ == "__main__":
         help="Associação por sequência dos itens nas OCs (i.e. '3,1,2').",
     )
     importar_parser.add_argument(
-        "-o",
+        "-r",
         "--ordem",
         action="store_true",
         help="Associação na ordem das OCs.",
