@@ -14,23 +14,44 @@ from bi import *
 
 
 def importacao_teste(nome: str) -> ImportacaoXML:
+    nomes_chaves = {
+        "dataentsai": "5022010310911700010455001877777771777777772",
+        "reducaomuda": "5022010310911700010455001777787771777777772",
+        "ipi": "5022010310911700010455001756777771777777772",
+        "cst60aliq0": "5022010310911700010455001977777771777777772",
+        "produtos": "5022010310911700010455001777785771777777772",
+        "simples": "5022010310911700010455001879777771777777772",
+        "reducaobc": "5022010310911700010455001877777781777777772",
+        "erronoitem": "5022010310911700010455001787777771777777772",
+        "frete": "5022010310911700010455001757777771777777772",
+        "semobservacao": "5022010310911700010455001777757771777777772",
+        "parceiro": "5022010310911700010455001777778971777777772",
+        "cst51redbc": "5022010310911700010455001777777781777777772",
+        "transportadora": "5022010310911700010455001777797771777777772",
+        "cst02aliqdiferente0": "5022010310911700010455001777777791777777772",
+        "reducaobcrsprars": "5022010310911700010455001787877771777777772",
+    }
     importacao_crua = wrapper.soyquery(
-        f"select * from tgfixn where xml like '%SOYNKHYA: {nome.upper()}%'"
+        f"select * from tgfixn where chaveacesso={nomes_chaves[nome]}"
     )
+
     assert len(importacao_crua) <= 1, "Mais de uma importação."
     if len(importacao_crua) == 1:
         importacao = ImportacaoXML(importacao_crua[0], wrapper)
-        importacao.processar()
+        if importacao.erro:
+            importacao.processar()
         return importacao
     else:
         for _, __, arquivos in os.walk("xmls_teste/"):
             for arquivo in arquivos:
+                print(arquivo)
                 try:
                     ImportacaoXML.novo("xmls_teste/" + arquivo)
+                    importacao.processar()
                 except:
                     pass
                 importacoes_cruas = wrapper.soyquery(
-                    f"select * from tgfixn where xml like '%SOYNKHYA:%'"
+                    f"select * from tgfixn where chaveacesso in ({", ".join(nomes_chaves.values())})"
                 )
                 cnpj_empresa_padrao = wrapper.soyquery(
                     f"select cgc from tsiemp where codemp={CONFIG.codigo_empresa_padrao}"
@@ -55,7 +76,7 @@ def importacao_teste(nome: str) -> ImportacaoXML:
                     ],
                 )
         importacao_crua = wrapper.soyquery(
-            f"select * from tgfixn where xml like '%SOYNKHYA: {nome.upper()}%'"
+            f"select * from tgfixn where chaveacesso={nomes_chaves[nome]}"
         )
         assert len(importacao_crua) == 1
         importacao = ImportacaoXML(importacao_crua[0], wrapper)
@@ -144,6 +165,185 @@ where observacao='SOYNKHYA'
         self.assertEqual(codigo_barras, [{"CODBARRA": "AVEREGINACAELORUM89"}])
 
     def test_ajuste_muda_ipi(self):
+        pass
+
+    def test_importacao_cli_escolha_de_nota(self):
+        self.assertNotEqual(
+            comando_importar("777777", None, 1)["importacao"].cru["CHAVEACESSO"],
+            comando_importar("777777", None, 2)["importacao"].cru["CHAVEACESSO"],
+        )
+
+    def test_importacao_cli_associacao_codigo(self):
+        imp = importacao_teste("produtos")
+        produtos_imp = [str(p["CODPROD"]) for p in imp.produtos_config]
+        associacoes = ""
+        # ou seja, `produtos_imp` não contém duplicatas
+        if len(list(set(produtos_imp))) == len(produtos_imp):
+            associacoes = f"{produtos_imp[1]},{produtos_imp[2]},{produtos_imp[0]}"
+        else:
+            associacoes = f"{produto_normal(2)},{produto_normal(3)},{produto_normal(1)}"
+        comando_importar(imp.cru["CHAVEACESSO"], None, 1, associacoes)
+        imp = imp.atualizar()
+        for p, esperado in zip(associacoes.split(","), imp.produtos_config):
+            self.assertEqual(p, esperado["CODPROD"])
+
+    def test_importacao_cli_associacao_codigo_inexistente(self):
+        imp = importacao_teste("simples")
+        with self.assertRaises(AssertionError):
+            comando_importar(imp.cru["CHAVEACESSO"], None, None, "31293812909")
+
+    def test_importacao_cli_associacao_sequencia_ou_ordem(self):
+        imp = importacao_teste("produtos")
+        produtos_imp = [str(p["CODPROD"]) for p in imp.produtos_config]
+
+        # 1 oc
+        _associacoes = [
+            str(random.choice([1, 2, 3])),
+            "1",
+            str(random.choice([2, 3])),
+        ]
+        associacoes = ",".join(_associacoes)
+        produtos = [
+            {
+                "CODPROD": produto_normal(1),
+                "CODVOL": "UN",
+                "QTDNEG": 2,
+            },
+            {
+                "CODPROD": produto_normal(2),
+                "CODVOL": "UN",
+                "QTDNEG": 2,
+            },
+            {
+                "CODPROD": produto_normal(3),
+                "CODVOL": "UN",
+                "QTDNEG": 2,
+            },
+        ]
+        top = wrapper.soyquery(
+            "select codtipoper from tgfcab where tipmov='O' and statusnota='L' group by codtipoper order by count(codtipoper) desc fetch first 1 rows only"
+        )[0]["CODTIPOPER"]
+
+        pedido = criar_documento(
+            int(top),
+            {"CODPARC": imp.cru["CODPARC"]},
+            produtos,
+        )
+        for ordem in [True, False]:
+            if ordem:
+                comando_importar(
+                    imp.cru["CHAVEACESSO"], pedido["NUNOTA"], 0, None, None, True
+                )
+                produtos_imp1 = imp.produtos_config
+                for id, produto in enumerate(produtos):
+                    self.assertEqual(
+                        produto["CODPROD"], int(produtos_imp1[id]["CODPROD"])
+                    )
+            else:
+                comando_importar(
+                    imp.cru["CHAVEACESSO"], pedido["NUNOTA"], 0, None, associacoes
+                )
+                imp = imp.atualizar()
+                produtos_imp1 = imp.produtos_config
+                for id, associacao in enumerate(_associacoes):
+                    p = produtos[int(associacao) - 1]
+                    self.assertEqual(p["CODPROD"], int(produtos_imp1[id]["CODPROD"]))
+
+        # 3 ocs
+        _associacoes = [
+            str(random.choice([1, 2, 3])),
+            str(random.choice([2, 3])),
+            "1",
+        ]
+        associacoes = ",".join(_associacoes)
+        pedido1 = criar_documento(
+            int(top),
+            {"CODPARC": imp.cru["CODPARC"]},
+            [produtos[0]],
+        )
+        pedido2 = criar_documento(
+            int(top),
+            {"CODPARC": imp.cru["CODPARC"]},
+            [produtos[1]],
+        )
+        pedido3 = criar_documento(
+            int(top),
+            {"CODPARC": imp.cru["CODPARC"]},
+            [produtos[2]],
+        )
+        for ordem in [True, False]:
+            if ordem:
+                comando_importar(
+                    imp.cru["CHAVEACESSO"], pedido["NUNOTA"], 0, None, None, True
+                )
+                imp = imp.atualizar()
+                produtos_imp2 = imp.produtos_config
+                for id, produto in enumerate(produtos):
+                    self.assertEqual(
+                        produto["CODPROD"], int(produtos_imp2[id]["CODPROD"])
+                    )
+            else:
+                comando_importar(
+                    imp.cru["CHAVEACESSO"],
+                    f"{pedido1["NUNOTA"]},{pedido2["NUNOTA"]},{pedido3["NUNOTA"]}",
+                    0,
+                    None,
+                    associacoes,
+                )
+                imp = imp.atualizar()
+                produtos_imp2 = imp.produtos_config
+                self.assertNotEqual(
+                    produtos_imp1, produtos_imp2, "Importação com 3 OCs não mudou nada."
+                )
+                for id, associacao in enumerate(_associacoes):
+                    p = produtos[int(associacao) - 1]
+                    self.assertEqual(p["CODPROD"], int(produtos_imp2[id]["CODPROD"]))
+
+    def test_importacao_cli_associacao_com_asterisco(self):
+        # Asterisco no lugar errado também
+        imp = importacao_teste("produtos")
+        produtos = [
+            {
+                "CODPROD": produto_normal(2),
+                "CODVOL": "UN",
+                "QTDNEG": 2,
+            },
+            {
+                "CODPROD": produto_normal(1),
+                "CODVOL": "UN",
+                "QTDNEG": 2,
+            },
+            {
+                "CODPROD": produto_normal(3),
+                "CODVOL": "UN",
+                "QTDNEG": 2,
+            },
+        ]
+        associacoes = ",".join([str(i["CODPROD"]) for i in produtos])
+        comando_importar(
+            imp.cru["CHAVEACESSO"],
+            None,
+            None,
+            associacoes,
+        )
+        imp = imp.atualizar()
+        self.assertEqual(
+            [str(a["CODPROD"]) for a in imp.produtos_config],
+            [str(a["CODPROD"]) for a in produtos],
+        )
+        comando_importar(
+            imp.cru["CHAVEACESSO"],
+            None,
+            None,
+            f"*,*,*",
+        )
+        imp = imp.atualizar()
+        self.assertEqual(
+            [str(a["CODPROD"]) for a in imp.produtos_config],
+            [str(a["CODPROD"]) for a in produtos],
+        )
+
+    def test_importacao_cli_poucas_associacoes(self):
         pass
 
     def test_regra_icms(self):
@@ -554,7 +754,7 @@ def criar_documento(
     top: int,
     parametros_extras: dict[str, str | float | int | None] = {},
     itens: list[dict[str, str | float | int | None]] = [],
-):
+) -> dict[str, str | float | int | None]:
     """
     Cria um documento de venda e retorna o seu número único.
     """
@@ -612,17 +812,18 @@ def criar_documento(
     return wrapper.soyquery(f"select * from tgfcab where nunota = {nunota}")[0]
 
 
-def produto_normal():
+def produto_normal(numero: int | None = None):
     """
     O produto cujo código será retornado não deve ser em si um problema
     em um faturamento ou em uma confirmação de documento.
     """
+    assert numero is None or numero in [1, 2, 3]
     nomes = [
         "SOYNKHYAPRODUTONORMAL1",
         "SOYNKHYAPRODUTONORMAL2",
         "SOYNKHYAPRODUTONORMAL3",
     ]
-    nome = random.choice(nomes)
+    nome = f"SOYNKHYAPRODUTONORMAL{numero or random.choice([1,2,3])}"
     _produto = wrapper.soyquery(f"select codprod from tgfpro where descrprod='{nome}'")
     if len(_produto) == 0:
         grupo_nome = "SOYNKHYAGRUPONORMAL"
@@ -1183,8 +1384,24 @@ class TestPedidos(unittest.TestCase):
             }
         )
         regras = wrapper.soyquery(
-            f"select * from tgficm i join tgfobs o on o.codobspadrao=i.codobspadrao where lower(observacao)=lower('{obs}')"
+            f"""
+select
+TIPRESTRICAO,
+TIPRESTRICAO2,
+UFORIG,
+UFDEST,
+CODRESTRICAO2,
+CODTRIB,
+ALIQUOTA,
+OUTORGA,
+REDBASE,
+REDBASEESTRANGEIRA
+from tgficm i join tgfobs o on o.codobspadrao=i.codobspadrao where lower(observacao)=lower('{obs}')
+"""
         )
+        # print()
+        # wrapper.printar_tabela(regras)
+
         self.assertEqual(len(regras), 20)
         estados = wrapper.soyquery("select coduf, uf from tsiufs")
         nordeste = [
@@ -1193,6 +1410,7 @@ class TestPedidos(unittest.TestCase):
             if e["UF"] in ["AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE", "ES"]
         ]
         rs = [e["CODUF"] for e in estados if e["UF"] == "RS"][0]
+
         for regra in regras:
             self.assertIn(regra["TIPRESTRICAO"], ["N", "X"])
             self.assertEqual(regra["TIPRESTRICAO2"], "H")
@@ -1230,7 +1448,17 @@ class TestPedidos(unittest.TestCase):
             }
         )
         regras = wrapper.soyquery(
-            f"select * from tgficm i join tgfobs o on o.codobspadrao=i.codobspadrao where lower(observacao)=lower('{obs}')"
+            f"""select TIPRESTRICAO,
+TIPRESTRICAO2,
+UFORIG,
+UFDEST,
+CODRESTRICAO2,
+CODTRIB,
+ALIQUOTA,
+OUTORGA,
+REDBASE,
+REDBASEESTRANGEIRA
+from tgficm i join tgfobs o on o.codobspadrao=i.codobspadrao where lower(observacao)=lower('{obs}')"""
         )
         self.assertEqual(len(regras), 6)
         rs = wrapper.soyquery("select coduf from tsiufs where uf='RS'")[0]["CODUF"]

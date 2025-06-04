@@ -1,6 +1,7 @@
 from utils import *
 import typing
 import xml.dom.minidom
+from rich import print
 import xml.etree.ElementTree as ET
 import argparse
 from config import *
@@ -616,16 +617,25 @@ Tu terás agora a opção de criar uma nova regra de icms.
         return resultado
 
     @property
-    def divergencia_pedidos(self):
-        return bool(self.__config.find("cabecalho").attrib.get("DIVERGENCIAPEDIDOS"))
+    def divergencia_pedidos(self) -> bool:
+        cabecalho = self.__config.find("cabecalho")
+        if cabecalho is None:
+            return False
+        return bool(cabecalho.attrib.get("DIVERGENCIAPEDIDOS"))
 
     @property
-    def divergencia_itens(self):
-        return bool(self.__config.find("cabecalho").attrib.get("DIVERGENCIAITENS"))
+    def divergencia_itens(self) -> bool:
+        cabecalho = self.__config.find("cabecalho")
+        if cabecalho is None:
+            return False
+        return bool(cabecalho.attrib.get("DIVERGENCIAITENS"))
 
     @property
-    def divergencia_financeiro(self):
-        return bool(self.__config.find("cabecalho").attrib.get("DIVERGENCIAFINANCEIRO"))
+    def divergencia_financeiro(self) -> bool:
+        cabecalho = self.__config.find("cabecalho")
+        if cabecalho is None:
+            return False
+        return bool(cabecalho.attrib.get("DIVERGENCIAFINANCEIRO"))
 
     @property
     def erro(self) -> str | None:
@@ -758,10 +768,19 @@ Tu terás agora a opção de criar uma nova regra de icms.
 
     def processar(self):
         config = wrapper.soyconfig("br.com.sankhya.cac.ImportacaoXMLNota.config")
-        nova_importacao_crua = wrapper.soyquery(
-            f"select * from tgfixn where nuarquivo={self.nuarquivo}"
+        self.wrapper.validar_importacao(
+            self.nuarquivo,
+            config,
+            False,
+            [],
+            [],
+            False,
+            False,
+            Impostos_Financeiro.DO_ARQUIVO,
+            Impostos_Financeiro.DO_ARQUIVO,
+            False,
+            False,
         )
-        return ImportacaoXML(nova_importacao_crua[0], self.wrapper)
 
     def __nota_e_xml(
         self, nome_da_tag: str, valores_numericos=False
@@ -829,6 +848,155 @@ Tu terás agora a opção de criar uma nova regra de icms.
         raise Exception(json.dumps(resposta_importacao, indent=4))
 
 
+def comando_importar(
+    danfe: str,
+    ocs: str | None = None,
+    escolha_importacao: int | None = None,
+    associacoes_codigo: str | None = None,
+    associacoes_sequencia: str | None = None,
+    associacoes_ordem: bool | None = None,
+):
+    if len(danfe) == 43:
+        _imp = wrapper.soyquery(
+            f"select * from tgfixn i join tgfpar p on i.codparc=p.codparc where chaveacesso={danfe}"
+        )
+    else:
+        _imp = wrapper.soyquery(
+            f"select * from tgfixn i join tgfpar p on i.codparc=p.codparc where numnota={danfe}"
+        )
+
+    if len(_imp) == 0:
+        print("Nenhuma nota encontrada.")
+        return
+    elif len(_imp) > 1:
+        importacoes_resumidas = []
+        a = 1
+        for i in _imp:
+            i.update({"Número": a})
+            a = a + 1
+            importacoes_resumidas.append(
+                escolher_chaves(i, ["Número", "CHAVEACESSO", "NOMEPARC", "VLRNOTA"])
+            )
+        print("Mais de uma nota encontrada. Escolha uma destas:")
+        wrapper.printar_tabela(importacoes_resumidas, ["TGFIXN", "TGFPAR"])
+        if escolha_importacao is None:
+            escolha_importacao = int(
+                input("Usa um número da coluna 'Números' para selecionar uma nota: ")
+            )
+        chave_acesso = [
+            x for x in importacoes_resumidas if x["Número"] == escolha_importacao
+        ][0]["CHAVEACESSO"]
+        _imp = [x for x in _imp if x["CHAVEACESSO"] == chave_acesso]
+
+    imp = ImportacaoXML(_imp[0], wrapper)
+
+    if imp.erro:
+        print(
+            f"[bold red]Chave de acesso: {imp.cru["CHAVEACESSO"]}\n{imp.erro}[/bold red]"
+        )
+    produtos_fusao = []
+    a = 0
+    for px in imp.produtos_xml:
+        a = a + 1
+        for pc in imp.produtos_config:
+            if pc["CODPRODXML"] == px["CODPROD"]:
+                produto_fusao = {
+                    "Número": a,
+                    "CODBARRA": px["CODBARRA"],
+                    "CODPROD": px["CODPROD"],
+                    "CODVOL": px["CODVOL"],
+                    "DESCRPROD": px["DESCRPROD"],
+                    "VLRUNIT": px["VLRUNIT"],
+                    "QTDNEG": px["QTDNEG"],
+                    "Cód. Produto no Soynkhya": pc["CODPROD"],
+                    "Descrição no Soynkhya": pc["DESCRPROD"],
+                }
+                produtos_fusao.append(produto_fusao)
+    wrapper.printar_tabela(
+        produtos_fusao, ["TGFITE", "TGFBAR", "TGFPRO"], titulo="Itens do XML"
+    )
+    produtos_ocs = None
+    if ocs is not None:
+        produtos_ocs = wrapper.soyquery(
+            f"""
+            select c.nunota, i.codprod, descrprod, i.codvol, vlrunit, qtdneg, codparc
+            from tgfite i
+            join tgfpro p on i.codprod=p.codprod
+            join tgfcab c on c.nunota=i.nunota
+            where i.nunota in ({ocs})
+            """
+        )
+        wrapper.printar_tabela(
+            produtos_ocs, ["TGFITE", "TGFPRO"], titulo="Itens das OCs"
+        )
+        assert len(produtos_ocs) >= len(
+            produtos_fusao
+        ), "Há menos produtos nas OCs do que na importação."
+        for p in produtos_ocs:
+            assert str(imp.parceiro) == str(
+                p["CODPARC"]
+            ), f"A OC {str(p["NUNOTA"])} tem {str(p["CODPARC"])} como parceiro. Esse não é o fornecedor que está na importação (Código {str(imp.parceiro)})."
+
+    if not associacoes_codigo and not associacoes_ordem and not associacoes_sequencia:
+        return {"importacao": imp}
+    if associacoes_codigo:
+        _associacoes = associacoes_codigo.split(",")
+        assert len(_associacoes) == len(
+            produtos_fusao
+        ), f"O quantidade de códigos associados deve ser {len(produtos_fusao)}, não {len(_associacoes)}."
+
+        associacoes = []
+        for codigo, produto in zip(_associacoes, produtos_fusao):
+            codigo = codigo.strip()
+            if codigo == "*":
+                assert isinstance(produto["Cód. Produto no Soynkhya"], str)
+                codigo = produto["Cód. Produto no Soynkhya"]
+            else:
+                assert codigo.isdigit(), f"O código {codigo} não é um número inteiro."
+            associacoes.append(codigo)
+
+        assoyciacoes = []
+        for associacao, produto in zip(associacoes, produtos_fusao):
+            assoc_bd = wrapper.soyquery(
+                f"select codprod, codvol unidade, descrprod from tgfpro where codprod={associacao}"
+            )
+            assert len(assoc_bd) == 1, f"Item {associacao} não existe no sistema."
+            assoyciacoes.append(
+                {
+                    "CODPROD": assoc_bd[0]["CODPROD"],
+                    "UNIDADE": assoc_bd[0]["UNIDADE"],
+                    "CODPRODXML": produto["CODPROD"],
+                    "DESCRPROD": assoc_bd[0]["DESCRPROD"],
+                }
+            )
+    elif associacoes_sequencia or associacoes_ordem:
+        assert (
+            ocs and produtos_ocs
+        ), "Só é possível associar sequencialmente quando o usuário informa OCs que têm produtos."
+        if associacoes_sequencia:
+            assert produtos_ocs, "Era pra ser impossível tu veres esta mensagem."
+            _associacoes = associacoes_sequencia.split(",")
+            assert len(_associacoes) == len(
+                produtos_fusao
+            ), f"O quantidade de associações deve ser {len(produtos_fusao)}, não {len(_associacoes)}."
+        elif associacoes_ordem:
+            _associacoes = [str(i + 1) for i in range(len(produtos_fusao))]
+        assoyciacoes = []
+        for id, associacao in enumerate(_associacoes):
+            prod_assoc = produtos_ocs[int(associacao) - 1]
+            assoyciacoes.append(
+                {
+                    "CODPROD": prod_assoc["CODPROD"],
+                    "UNIDADE": prod_assoc["CODVOL"],
+                    "CODPRODXML": produtos_fusao[id]["CODPROD"],
+                    "DESCRPROD": prod_assoc["DESCRPROD"],
+                }
+            )
+
+    imp.associar(assoyciacoes)
+    return {"importacao": imp}
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Importe notas sem interagir com o Soynkhya :)"
@@ -845,6 +1013,12 @@ if __name__ == "__main__":
     )
     gravar_parser.add_argument("nuarquivo", type=int, help="Id da importação.")
 
+    importar_parser = subparsers.add_parser("importar", help="Importa nota.")
+    importar_parser.add_argument("danfe", type=int, help="Número da nota.")
+    importar_parser.add_argument(
+        "-o", "--ocs", type=int, help="Número das ordens de compra."
+    )
+
     args = parser.parse_args()
 
     if args.comando == "editar":
@@ -856,6 +1030,8 @@ if __name__ == "__main__":
         with open(os.path.join("importacoes", f"{args.nuarquivo}.xml"), "w") as f:
             f.write(importacao_xml)
         print("Sucesso.")
+    if args.comando == "importar":
+        comando_importar(args.danfe, args.ocs)
     if args.comando == "gravar":
         caminho = os.path.join("importacoes", f"{args.nuarquivo}.xml")
         os.path.exists(caminho)

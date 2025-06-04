@@ -40,6 +40,10 @@ def substituicao_recursiva(pasta: str, padrao_regex: str, substituicao: str):
                 print(f"Error processing {caminho}: {e}")
 
 
+def escolher_chaves(dicionario: dict[str, Any], chaves: list[str]):
+    return {z: dicionario[z] for z in chaves}
+
+
 def formata_valores(
     info_campos: list[dict[str, str | dict[str, list[dict[str, str]]]]],
     valor: str,
@@ -527,7 +531,11 @@ Query: {query}
         ).json()
 
     def printar_tabela(
-        self, __resultados: list[dict[str, str]], tabelas=[], _colunas={}
+        self,
+        __resultados: list[dict[str, str]],
+        tabelas=[],
+        _colunas={},
+        titulo: str | None = None,
     ):
         resultados = copy.deepcopy(__resultados)
         if len(__resultados) > 0:
@@ -535,7 +543,6 @@ Query: {query}
             instancias = []
             if len(tabelas) > 0:
                 info_campos: list[dict[str, str | dict[str, list[dict[str, str]]]]] = []
-                print(tabelas)
                 for tabela in tabelas:
                     instancia = self.soyquery(
                         f"select nomeinstancia from tddins where upper(nometab) = upper('{tabela}')"
@@ -555,7 +562,10 @@ Query: {query}
                         }
                     )
                 resultados = _resultados
-            tabela_mostrada = Table(title=", ".join(instancias))
+            if titulo is not None:
+                tabela_mostrada = Table(title=titulo)
+            else:
+                tabela_mostrada = Table(title=", ".join(instancias))
             cons = Console()
             chaves = resultados[0].keys()
             for chave in chaves:
@@ -876,6 +886,49 @@ Query: {query}
             cookie="mgecom",
         )
         return self.pegar_corpo(r)
+
+    def liberar(
+        self, eventos: list[dict[str, str | int]], usuario: int, valor_liberado=0
+    ):
+        """
+        eventos = [
+            {
+                "NUCHAVE": 171912,
+                "EVENTO": 3,
+                "NUCLL": 0,
+                "SEQCASCATA": 0,
+                "SEQUENCIA": 0,
+                "TABELA": "TGFCAB",
+            }, [...]
+        ]
+        """
+        eventos_sojados = [
+            {
+                "nuChave": e["NUCHAVE"],
+                "evento": e["EVENTO"],
+                "nucll": e["NUCLL"],
+                "seqCascata": e["SEQCASCATA"],
+                "sequencia": e["SEQUENCIA"],
+                "tabela": e["TABELA"],
+            }
+            for e in eventos
+        ]
+        print(f"{eventos_sojados=}")
+        r = self.soyrequest(
+            "LiberacaoLimitesSP.liberarNegarLimites",
+            {
+                "params": {
+                    "itens": eventos_sojados,
+                    "usuario": usuario,
+                    "liberar": "",
+                    "obsLib": "",
+                    "vlrLib": valor_liberado,
+                    "confirmarNotaAutomaticamente": "false",
+                    "compensarNotaAutomaticamente": "false",
+                },
+            },
+        )
+        self.pegar_corpo(r)
 
     def texto_carta_de_correcao(self, nota: int):
         r = self.soyrequest(
