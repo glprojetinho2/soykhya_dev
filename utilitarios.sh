@@ -61,6 +61,27 @@ from tsiend
 join tsicid c on c.codcid = destinatario.codcid
 join tsiufs u on c.uf = u.coduf
 where codend=destinatario.codend) endereco_destinatario,
+triangular.cgc_cpf cpf_triangular,
+triangular.nomeparc nome_triangular,
+(
+select
+concat(
+tipo,
+concat(concat(
+' ',
+nomeend
+), concat(concat(
+' ',
+triangular.numend
+),
+concat(
+' - ',
+concat(nomecid, concat('/', u.uf))
+))))
+from tsiend
+join tsicid c on c.codcid = triangular.codcid
+join tsiufs u on c.uf = u.coduf
+where codend=triangular.codend) endereco_triangular,
 (case CIF_FOB
 when 'T' then 'Terceiros'
 when 'R' then 'Transp. Próprio Remetente'
@@ -75,10 +96,12 @@ observacao,
 qtdvol,
 destinatario.cep destinatario_cep,
 remetente.cep remetente_cep,
+triangular.cep triangular_cep,
 vlrnota
 from tgfcab c
 join tgfpar destinatario on destinatario.codparc = c.codparc
+join tgfpar triangular on triangular.codparc = c.codparcdest
 join tgfpar remetente on remetente.codparc = c.codemp
 where nunota=$1
-" | jq '.[0] | "CNPJ do remetente: \(.CNPJ_REMETENTE)\nNome do remetente: \(.NOME_REMETENTE)\nEndereço de coleta: \(.ENDERECO_COLETA) - CEP \(.REMETENTE_CEP)\n\nCNPJ do destinatário: \(.CNPJ_DESTINATARIO)\nNome do destinatário: \(.NOME_DESTINATARIO)\nEndereço de destino: \(.ENDERECO_DESTINATARIO) - CEP \(.DESTINATARIO_CEP)\n\nQuantidade de volumes: xxxxxxxxxxxx\nPeso: xxxxxxxxxxxxxxx\nTipo de carga: xxxxxxxxxxxxxxxx\nValor da nota: R$ \(.VLRNOTA)\nModalidade: \(.MODALIDADE)\n\nMedidas:\nxxxxxxxxxxxxxxx\n\nObservação da nota:\n\(.OBSERVACAO)\n\nPor favor, forneça-nos as seguintes informações:\n1) Código único da cotação;\n2) Prazo para coleta;\n3) Prazo para entrega pós coleta;\n4) Valor do frete."' -r
+" | jq '.[0] | "CNPJ do remetente: \(.CNPJ_REMETENTE)\nNome do remetente: \(.NOME_REMETENTE)\nEndereço de coleta: \(.ENDERECO_COLETA) - CEP \(.REMETENTE_CEP)\n\nCNPJ do destinatário: \(.CNPJ_DESTINATARIO)\nNome do destinatário: \(.NOME_DESTINATARIO)\nEndereço de destino: \(.ENDERECO_DESTINATARIO) - CEP \(.DESTINATARIO_CEP)\nCPF do destinatário (P.F.): \(.CPF_TRIANGULAR)\nNome do destinatário (P.F.): \(.NOME_TRIANGULAR)\nEndereço de destino (P.F.): \(.ENDERECO_TRIANGULAR) - CEP \(.TRIANGULAR_CEP)\n\nQuantidade de volumes: xxxxxxxxxxxx\nPeso: xxxxxxxxxxxxxxx\nTipo de carga: xxxxxxxxxxxxxxxx\nValor da nota: R$ \(.VLRNOTA)\nModalidade: \(.MODALIDADE)\n\nMedidas:\nxxxxxxxxxxxxxxx\n\nObservação da nota:\n\(.OBSERVACAO)\n\nPor favor, forneça-nos as seguintes informações:\n1) Código único da cotação;\n2) Prazo para coleta;\n3) Prazo para entrega pós coleta;\n4) Valor do frete."' -r
 }
